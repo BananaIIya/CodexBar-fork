@@ -623,73 +623,11 @@ struct CodexArchivedRolloutMirrorTests {
     }
 
     @Test
-    func `forks in the window decode their archived parent from before the window`() throws {
-        let env = try CostUsageTestEnvironment()
-        defer { env.cleanup() }
-        let parentDay = try env.makeLocalNoon(year: 2026, month: 8, day: 1)
-        let day = try env.makeLocalNoon(year: 2026, month: 9, day: 17)
-        let parentId = Self.uuid(10)
-        let childId = Self.uuid(11)
-        func metadata(_ id: String, parent: String?, at date: Date) -> String {
-            let fork = parent.map { #","forked_from_id":"\#($0)""# } ?? ""
-            return #"{"type":"session_meta","payload":{"id":"\#(id)","source":"vscode","#
-                + #""thread_source":"user","timestamp":"\#(env.isoString(for: date))"\#(fork)}}"#
-        }
-        func tokens(_ input: Int, last: Int, at date: Date) -> String {
-            #"{"type":"event_msg","timestamp":"\#(env.isoString(for: date))","payload":{"type":"token_count","#
-                + #""info":{"model":"gpt-5.4","total_token_usage":{"input_tokens":\#(input),"output_tokens":0},"#
-                + #""last_token_usage":{"input_tokens":\#(last),"output_tokens":0}}}}"#
-        }
-        let parent = [metadata(parentId, parent: nil, at: parentDay), tokens(1000, last: 1000, at: parentDay)]
-        try Self.writeArchive(
-            env: env,
-            day: parentDay,
-            name: "rollout-2026-08-01T12-00-00-\(parentId).jsonl",
-            contents: Data((parent.joined(separator: "\n") + "\n").utf8),
-            modified: parentDay)
-        _ = try env.writeCodexSessionFile(
-            day: day,
-            filename: "rollout-2026-09-17T12-00-00-\(childId).jsonl",
-            contents: [
-                metadata(childId, parent: parentId, at: day),
-                tokens(1000, last: 1000, at: day.addingTimeInterval(1)),
-                tokens(1020, last: 20, at: day.addingTimeInterval(2)),
-            ].joined(separator: "\n") + "\n")
-        var options = CostUsageScanner.Options(
-            codexSessionsRoot: env.codexSessionsRoot,
-            cacheRoot: env.cacheRoot,
-            codexTraceDatabaseURL: env.root.appendingPathComponent("missing.sqlite"))
-        options.refreshMinIntervalSeconds = 0
-
-        var total: Int?
-        for _ in 0..<4 {
-            total = CostUsageScanner.loadDailyReport(
-                provider: .codex,
-                since: day,
-                until: day,
-                now: day,
-                options: options)
-                .summary?.totalTokens
-        }
-
-        // Only the child's own 20 tokens fall in the window; the parent's 1000 are inherited, not billed again.
-        #expect(total == 20)
-        let cache = CostUsageStoreAccess.read(cacheRoot: env.cacheRoot)
-        let child = try #require(cache.files.values.first { $0.sessionId == childId })
-        #expect(!CostUsageScanner.isUnresolvedMissingParentFork(child))
-        #expect(cache.codexScanCatchUpPending == false)
-    }
-
-    // MARK: - Fixtures
-
-    @Test
-    func `decoded transcripts and their folders are private to the owner`() throws {
-        let previousMask = umask(0o022)
-        defer { umask(previousMask) }
+    func `a replay paused by the deadline continues after a relaunch`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
         let day = try env.makeLocalNoon(year: 2026, month: 8, day: 30)
-        let payload = Self.patternedPayload(count: 500_000)
+        let payload = Self.patternedPayload(count: 1_000_000)
         try Self.writeArchive(
             env: env,
             day: day,
@@ -699,94 +637,91 @@ struct CodexArchivedRolloutMirrorTests {
         let archive = try #require(CodexArchivedRolloutMirror.prepare(
             sourceRoots: [env.codexSessionsRoot],
             cacheRoot: env.cacheRoot).roots.first?.archives.first)
-        let mirrorRoot = CodexArchivedRolloutMirror.mirrorRoot(for: env.codexSessionsRoot, cacheRoot: env.cacheRoot)
+        #expect(try !CodexArchivedRolloutMirror.decode(archive, maxNewBytes: 900_000).isComplete)
+        CodexArchivedRolloutMirror.discardDecodeSessionsForTesting()
 
-        #expect(try !CodexArchivedRolloutMirror.decode(archive, maxNewBytes: 100_000).isComplete)
-        #expect(Self.mode(of: archive.resumeURL) == 0o600)
-        #expect(try CodexArchivedRolloutMirror.decode(archive, maxNewBytes: .max).isComplete)
-        #expect(Self.mode(of: archive.mirrorURL) == 0o600)
-        let dayFolder = archive.mirrorURL.deletingLastPathComponent()
-        for directory in [mirrorRoot.deletingLastPathComponent(), mirrorRoot, dayFolder] {
-            #expect(Self.mode(of: directory) == 0o700, "\(directory.path)")
+        // Each refresh replays only part of the 900,000 bytes already on disk before its deadline.
+        var refreshes = 0
+        var complete = false
+        while !complete, refreshes < 10 {
+            refreshes += 1
+            var checks = 0
+            complete = try CodexArchivedRolloutMirror.decode(archive, maxNewBytes: .max, shouldPause: {
+                checks += 1
+                return checks > 2
+            }).isComplete
         }
 
-        try Self.writeArchive(
-            env: env,
-            day: day,
-            name: "rollout-2026-08-30T13-00-00-\(Self.uuid(1)).jsonl",
-            contents: Data(repeating: 0x63, count: 1000),
-            modified: day,
-            truncate: true)
-        let result = try CodexArchivedRolloutMirror.materialize(
-            CodexArchivedRolloutMirror.prepare(sourceRoots: [env.codexSessionsRoot], cacheRoot: env.cacheRoot),
-            modifiedSince: nil)
-        #expect(result.failed == 1)
-        #expect(Self.mode(of: mirrorRoot.appendingPathComponent(".failed-archives.json")) == 0o600)
+        #expect(complete)
+        #expect(refreshes > 1)
+        #expect(try Data(contentsOf: archive.mirrorURL) == payload)
     }
 
     @Test
-    func `mirrors and slices left readable by an earlier build are made private`() throws {
-        let previousMask = umask(0o022)
-        defer { umask(previousMask) }
+    func `an admitted archive decodes a step even when its deadline has passed`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
         let day = try env.makeLocalNoon(year: 2026, month: 8, day: 30)
+        let payload = Self.patternedPayload(count: 600_000)
         try Self.writeArchive(
             env: env,
             day: day,
             name: "rollout-2026-08-30T12-00-00-\(Self.uuid(0)).jsonl",
-            contents: Self.patternedPayload(count: 500_000),
+            contents: payload,
             modified: day)
-        try Self.writeArchive(
-            env: env,
-            day: day,
-            name: "rollout-2026-08-30T13-00-00-\(Self.uuid(1)).jsonl",
-            contents: Self.patternedPayload(count: 1000),
-            modified: day)
-        let archives = try CodexArchivedRolloutMirror.prepare(
+        let archive = try #require(CodexArchivedRolloutMirror.prepare(
             sourceRoots: [env.codexSessionsRoot],
-            cacheRoot: env.cacheRoot).roots.flatMap(\.archives).sorted { $0.relativePath < $1.relativePath }
-        let (sliced, published) = (archives[0], archives[1])
-        #expect(try !CodexArchivedRolloutMirror.decode(sliced, maxNewBytes: 100_000).isComplete)
-        #expect(try CodexArchivedRolloutMirror.decode(published, maxNewBytes: .max).isComplete)
-        let mirrorRoot = CodexArchivedRolloutMirror.mirrorRoot(for: env.codexSessionsRoot, cacheRoot: env.cacheRoot)
-        let directories = [mirrorRoot.deletingLastPathComponent(), mirrorRoot]
-        for file in [sliced.resumeURL, published.mirrorURL] {
-            #expect(chmod(file.path, 0o644) == 0)
-        }
-        for directory in directories {
-            #expect(chmod(directory.path, 0o755) == 0)
+            cacheRoot: env.cacheRoot).roots.first?.archives.first)
+
+        // The deadline lapsed between admission and decoding on every refresh.
+        var refreshes = 0
+        var complete = false
+        while !complete, refreshes < 20 {
+            refreshes += 1
+            complete = try CodexArchivedRolloutMirror.decode(archive, maxNewBytes: .max, shouldPause: { true })
+                .isComplete
         }
 
-        _ = try CodexArchivedRolloutMirror.prepare(sourceRoots: [env.codexSessionsRoot], cacheRoot: env.cacheRoot)
-
-        #expect(Self.mode(of: sliced.resumeURL) == 0o600)
-        #expect(Self.mode(of: published.mirrorURL) == 0o600)
-        for directory in directories {
-            #expect(Self.mode(of: directory) == 0o700, "\(directory.path)")
-        }
-        // A slice loosened after listing is still tightened before decoding resumes into it.
-        #expect(chmod(sliced.resumeURL.path, 0o644) == 0)
-        #expect(try CodexArchivedRolloutMirror.decode(sliced, maxNewBytes: .max).isComplete)
-        #expect(Self.mode(of: sliced.mirrorURL) == 0o600)
-
-        // Replacing a loosened mirror after its archive changes does not inherit the old mode.
-        try Self.writeArchive(
-            env: env,
-            day: day,
-            name: "rollout-2026-08-30T13-00-00-\(Self.uuid(1)).jsonl",
-            contents: Self.patternedPayload(count: 2000),
-            modified: day.addingTimeInterval(60))
-        let changed = try #require(CodexArchivedRolloutMirror.prepare(
-            sourceRoots: [env.codexSessionsRoot],
-            cacheRoot: env.cacheRoot).roots.flatMap(\.archives).first { $0.mirrorURL == published.mirrorURL })
-        #expect(chmod(published.mirrorURL.path, 0o644) == 0)
-        #expect(try CodexArchivedRolloutMirror.decode(changed, maxNewBytes: .max).isComplete)
-        #expect(try Data(contentsOf: published.mirrorURL) == Self.patternedPayload(count: 2000))
-        #expect(Self.mode(of: published.mirrorURL) == 0o600)
+        #expect(complete)
+        #expect(refreshes > 1)
+        #expect(try Data(contentsOf: archive.mirrorURL) == payload)
     }
 
-    private static func rollout(stamp: String) -> String {
+    @Test
+    func `cancellation interrupts the archive walks`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+        let day = try env.makeLocalNoon(year: 2026, month: 8, day: 30)
+        for index in 0..<300 {
+            _ = try env.writeCodexSessionFile(
+                day: day,
+                filename: "rollout-2026-08-30T12-00-00-\(Self.uuid(index)).jsonl",
+                contents: "")
+        }
+        let cancel: CostUsageScanner.CancellationCheck = { throw CancellationError() }
+
+        #expect(throws: CancellationError.self) {
+            try CodexArchivedRolloutMirror.ensureMirrorRoots(
+                sourceRoots: [env.codexSessionsRoot],
+                cacheRoot: env.cacheRoot,
+                checkCancellation: cancel)
+        }
+        // `prepare` already checks once per root; cancel only once the walk itself is running.
+        var checks = 0
+        #expect(throws: CancellationError.self) {
+            try CodexArchivedRolloutMirror.prepare(
+                sourceRoots: [env.codexSessionsRoot],
+                cacheRoot: env.cacheRoot,
+                checkCancellation: {
+                    checks += 1
+                    if checks > 1 { throw CancellationError() }
+                })
+        }
+    }
+
+    // MARK: - Fixtures
+
+    static func rollout(stamp: String) -> String {
         [
             #"{"type":"turn_context","timestamp":"\#(stamp)","payload":{"model":"gpt-5.4"}}"#,
             #"{"type":"event_msg","timestamp":"\#(stamp)","payload":{"type":"token_count","info":"#
@@ -804,7 +739,7 @@ struct CodexArchivedRolloutMirrorTests {
     }
 
     /// Non-repeating bytes, so a misplaced resume offset changes the decoded content.
-    private static func patternedPayload(count: Int) -> Data {
+    static func patternedPayload(count: Int) -> Data {
         Data((0..<count).map { UInt8(truncatingIfNeeded: $0 &* 31 &+ ($0 >> 9)) })
     }
 
@@ -819,18 +754,12 @@ struct CodexArchivedRolloutMirrorTests {
         return names.map { ($0 as NSString).lastPathComponent }.filter { $0.hasPrefix(".") }
     }
 
-    private static func mode(of url: URL) -> mode_t? {
-        var status = stat()
-        guard lstat(url.path, &status) == 0 else { return nil }
-        return status.st_mode & 0o777
-    }
-
-    private static func uuid(_ index: Int) -> String {
+    static func uuid(_ index: Int) -> String {
         String(format: "0199f0a0-0000-7000-8000-%012d", index)
     }
 
     /// Writes `name.zst` (a raw-block zstd frame of `contents`) into the day's sessions folder.
-    private static func writeArchive(
+    static func writeArchive(
         env: CostUsageTestEnvironment,
         day: Date,
         name: String,

@@ -34,6 +34,8 @@ enum CodexArchivedRolloutMirror {
     private static let failureLedgerName = ".failed-archives.json"
     /// Same-mtime check for an already mirrored archive; Foundation round-trips through `Double` seconds.
     private static let mtimeTolerance: TimeInterval = 0.01
+    /// Directory walks check cancellation every this many entries.
+    private static let walkCancellationInterval = 256
     /// Mirrors hold whole decoded transcripts, which may be private at their source, so every file and
     /// directory under the mirror container is owner-only regardless of the umask.
     private static let privateFileMode: mode_t = 0o600
@@ -186,13 +188,19 @@ enum CodexArchivedRolloutMirror {
     /// Creates the mirror root for any source root that holds an archive, before roots are fingerprinted, so
     /// the refresh that first decodes archives also scans them. An existing mirror root costs one stat; a
     /// source root without one is probed until its first archive, and an empty result is remembered briefly.
-    static func ensureMirrorRoots(sourceRoots: [URL], cacheRoot: URL?) {
+    static func ensureMirrorRoots(
+        sourceRoots: [URL],
+        cacheRoot: URL?,
+        checkCancellation: CostUsageScanner.CancellationCheck? = nil) throws
+    {
         for sourceRoot in sourceRoots {
             let mirrorRoot = self.mirrorRoot(for: sourceRoot, cacheRoot: cacheRoot)
             let key = sourceRoot.standardizedFileURL.path
             guard !FileManager.default.fileExists(atPath: mirrorRoot.path), !self.emptyRootProbes.isFresh(key)
             else { continue }
-            let hasArchive = self.containsArchive(under: sourceRoot.standardizedFileURL)
+            let hasArchive = try self.containsArchive(
+                under: sourceRoot.standardizedFileURL,
+                checkCancellation: checkCancellation)
             self.emptyRootProbes.record(key, empty: !hasArchive)
             if hasArchive {
                 try? self.createPrivateMirrorRoot(mirrorRoot)
@@ -200,13 +208,18 @@ enum CodexArchivedRolloutMirror {
         }
     }
 
-    private static func containsArchive(under sourceRoot: URL) -> Bool {
+    private static func containsArchive(
+        under sourceRoot: URL,
+        checkCancellation: CostUsageScanner.CancellationCheck?) throws -> Bool
+    {
         guard let enumerator = FileManager.default.enumerator(
             at: sourceRoot,
             includingPropertiesForKeys: [],
             options: [.skipsHiddenFiles, .skipsPackageDescendants])
         else { return false }
-        for case let url as URL in enumerator {
+        for (index, element) in enumerator.enumerated() {
+            if index % self.walkCancellationInterval == 0 { try checkCancellation?() }
+            guard let url = element as? URL else { continue }
             let name = url.lastPathComponent
             guard name.hasPrefix(self.rolloutPrefix), name.hasSuffix(self.archiveSuffix) else { continue }
             if !FileManager.default.fileExists(atPath: String(url.path.dropLast(".zst".count))) {
@@ -227,7 +240,10 @@ enum CodexArchivedRolloutMirror {
         for sourceRoot in sourceRoots {
             try checkCancellation?()
             let mirrorRoot = self.mirrorRoot(for: sourceRoot, cacheRoot: cacheRoot)
-            let archives = self.archives(under: sourceRoot.standardizedFileURL, mirrorRoot: mirrorRoot)
+            let archives = try self.archives(
+                under: sourceRoot.standardizedFileURL,
+                mirrorRoot: mirrorRoot,
+                checkCancellation: checkCancellation)
             inventory.removed += self.pruneMirror(
                 mirrorRoot,
                 keeping: Set(archives.flatMap {
@@ -385,7 +401,11 @@ enum CodexArchivedRolloutMirror {
 
     // MARK: - Files
 
-    private static func archives(under sourceRoot: URL, mirrorRoot: URL) -> [Archive] {
+    private static func archives(
+        under sourceRoot: URL,
+        mirrorRoot: URL,
+        checkCancellation: CostUsageScanner.CancellationCheck?) throws -> [Archive]
+    {
         let rootPath = sourceRoot.path.hasSuffix("/") ? sourceRoot.path : sourceRoot.path + "/"
         let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]
         guard let enumerator = FileManager.default.enumerator(
@@ -394,7 +414,9 @@ enum CodexArchivedRolloutMirror {
             options: [.skipsHiddenFiles, .skipsPackageDescendants])
         else { return [] }
         var out: [Archive] = []
-        for case let url as URL in enumerator {
+        for (index, element) in enumerator.enumerated() {
+            if index % self.walkCancellationInterval == 0 { try checkCancellation?() }
+            guard let url = element as? URL else { continue }
             let name = url.lastPathComponent
             guard name.hasPrefix(self.rolloutPrefix), name.hasSuffix(self.archiveSuffix) else { continue }
             let values = try? url.resourceValues(forKeys: Set(keys))
@@ -666,7 +688,9 @@ enum CodexArchivedRolloutMirror {
 
         var parked = false
         var reused = self.sessions.take(key)
-        if let session = reused, session.consumedOutput != onDisk {
+        // A session behind the slice (paused while replaying its prefix) skips the rest; one ahead of it
+        // means the slice was shortened, so it starts over.
+        if let session = reused, session.consumedOutput > onDisk {
             reused = nil
         }
         do {
@@ -679,6 +703,7 @@ enum CodexArchivedRolloutMirror {
             let output = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
             try output.seekToEnd()
             var written: Int64 = 0
+            var stepped = false
             while true {
                 if !session.pendingOutput.isEmpty, skip > 0 {
                     let count = Int(min(skip, Int64(session.pendingOutput.count)))
@@ -714,7 +739,9 @@ enum CodexArchivedRolloutMirror {
                     try self.publish(archive, sliceURL: sliceURL)
                     return DecodeOutcome(isComplete: true, written: written)
                 }
-                if shouldPause() {
+                // Like `CodexScanBudget.admit`, a refresh that starts past its deadline still makes one step of
+                // progress, so a slow inventory or long replay cannot starve an archive forever.
+                if stepped || written > 0, shouldPause() {
                     park()
                     return DecodeOutcome(isComplete: false, written: written)
                 }
@@ -734,6 +761,7 @@ enum CodexArchivedRolloutMirror {
                     session.pendingInputOffset = 0
                 }
                 try session.step()
+                stepped = true
             }
         } catch {
             if !parked {

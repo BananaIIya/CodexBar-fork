@@ -2161,9 +2161,10 @@ enum CostUsageScanner {
         switch provider {
         case .codex:
             // A mirror root has to exist before roots are fingerprinted for its archives to be scanned this refresh.
-            CodexArchivedRolloutMirror.ensureMirrorRoots(
+            try CodexArchivedRolloutMirror.ensureMirrorRoots(
                 sourceRoots: self.codexSourceSessionsRoots(options: options),
-                cacheRoot: options.cacheRoot)
+                cacheRoot: options.cacheRoot,
+                checkCancellation: checkCancellation)
             return try self.loadCodexDaily(
                 range: range,
                 now: now,
@@ -2267,14 +2268,21 @@ enum CostUsageScanner {
     /// Parent session ids of forks whose baseline is still missing. Archived parents are decoded on demand,
     /// outside the report window, so these forks can settle like forks with older plain parents.
     static func codexMissingForkParentIds(cache: CostUsageCache) -> Set<String> {
-        let knownSessionIds = Set(cache.files.values.compactMap { $0.sessionId?.lowercased() })
-        return Set(cache.files.values.compactMap { usage in
-            guard let parentId = usage.forkedFromId?.lowercased(),
-                  self.isUnresolvedMissingParentFork(usage),
-                  !knownSessionIds.contains(parentId)
+        let candidates = Set(cache.files.values.compactMap { usage -> String? in
+            guard let parentId = usage.forkedFromId?.lowercased(), self.isUnresolvedMissingParentFork(usage)
             else { return nil }
             return parentId
         })
+        guard !candidates.isEmpty else { return [] }
+        // Like the session index, a cached row only provides a parent while its file exists; Codex may have
+        // archived the plain file after it was cached.
+        let available = Set(cache.files.compactMap { path, usage -> String? in
+            guard let sessionId = usage.sessionId?.lowercased(), candidates.contains(sessionId),
+                  FileManager.default.fileExists(atPath: path)
+            else { return nil }
+            return sessionId
+        })
+        return candidates.subtracting(available)
     }
 
     private static func codexArchivedSessionsRoot(sessionsRoot: URL) -> URL? {
