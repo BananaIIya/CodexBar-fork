@@ -269,6 +269,7 @@ enum CodexArchivedRolloutMirror {
     {
         var result = SyncResult()
         result.removed = inventory.removed
+        var admittedArchive = false
         let required = Set(requiredSessionIds.map { $0.lowercased() })
         for root in inventory.roots {
             var ledger = self.loadFailureLedger(mirrorRoot: root.mirrorRoot)
@@ -303,11 +304,13 @@ enum CodexArchivedRolloutMirror {
                 let estimatedRemaining = self.decodedSize(of: archive) - self.fileSize(of: archive.resumeURL)
                 guard let allowance = self.admit(
                     workBytes: estimatedRemaining > 0 ? estimatedRemaining : self.unknownRemainderRequest,
-                    budget: budget)
+                    budget: budget,
+                    isFirstAdmission: !admittedArchive)
                 else {
                     deferRemaining(from: index)
                     break
                 }
+                admittedArchive = true
                 do {
                     let outcome = try self.decode(
                         archive,
@@ -371,10 +374,16 @@ enum CodexArchivedRolloutMirror {
     // MARK: - Budget
 
     /// Returns how many new decoded bytes this refresh may write for an archive, or nil to defer it.
-    /// A partial allowance is a resumable slice, exactly like a large plain rollout's.
-    private static func admit(workBytes: Int64, budget: CostUsageScanner.CodexScanBudget?) -> Int64? {
+    /// A partial allowance is a resumable slice, exactly like a large plain rollout's. The first archive of a
+    /// refresh is not held to the deadline: listing a large history can use it all up, and deferring every
+    /// archive would repeat that listing each refresh without ever decoding. `decode` still pauses after a step.
+    private static func admit(
+        workBytes: Int64,
+        budget: CostUsageScanner.CodexScanBudget?,
+        isFirstAdmission: Bool) -> Int64?
+    {
         guard let budget else { return .max }
-        guard !budget.shouldStopBeforeNextFile() else { return nil }
+        guard isFirstAdmission || !budget.shouldStopBeforeNextFile() else { return nil }
         switch budget.admit(workBytes: workBytes) {
         case .deferBudget:
             return nil
@@ -739,8 +748,8 @@ enum CodexArchivedRolloutMirror {
                     try self.publish(archive, sliceURL: sliceURL)
                     return DecodeOutcome(isComplete: true, written: written)
                 }
-                // Like `CodexScanBudget.admit`, a refresh that starts past its deadline still makes one step of
-                // progress, so a slow inventory or long replay cannot starve an archive forever.
+                // An admitted archive makes at least one step of progress even past the deadline, so a slow
+                // inventory or a long replay cannot starve it forever.
                 if stepped || written > 0, shouldPause() {
                     park()
                     return DecodeOutcome(isComplete: false, written: written)

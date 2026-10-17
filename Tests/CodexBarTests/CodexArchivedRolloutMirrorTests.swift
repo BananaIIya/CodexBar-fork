@@ -688,6 +688,39 @@ struct CodexArchivedRolloutMirrorTests {
     }
 
     @Test
+    func `archives keep decoding when listing them uses up every refresh deadline`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+        let day = try env.makeLocalNoon(year: 2026, month: 8, day: 30)
+        let payloads = [Self.patternedPayload(count: 600_000), Self.patternedPayload(count: 400_000)]
+        for (index, payload) in payloads.enumerated() {
+            try Self.writeArchive(
+                env: env,
+                day: day,
+                name: "rollout-2026-08-30T12-00-0\(index)-\(Self.uuid(index)).jsonl",
+                contents: payload,
+                modified: day.addingTimeInterval(TimeInterval(index)))
+        }
+
+        var refreshes = 0
+        var result = CodexArchivedRolloutMirror.SyncResult(deferred: 1)
+        while result.hasPendingWork, refreshes < 40 {
+            refreshes += 1
+            // The deadline has passed by the time the archives are listed, on every refresh.
+            let budget = CostUsageScanner.CodexScanBudget(maxFileBytes: 0, maxBytesPerRefresh: 0, maxDuration: 1e-6)
+            let inventory = try CodexArchivedRolloutMirror.prepare(
+                sourceRoots: [env.codexSessionsRoot],
+                cacheRoot: env.cacheRoot)
+            result = try CodexArchivedRolloutMirror.materialize(inventory, modifiedSince: nil, budget: budget)
+        }
+
+        #expect(!result.hasPendingWork)
+        #expect(refreshes > 2)
+        let mirrorRoot = CodexArchivedRolloutMirror.mirrorRoot(for: env.codexSessionsRoot, cacheRoot: env.cacheRoot)
+        #expect(try Set(Self.mirroredFiles(in: mirrorRoot).map { try Data(contentsOf: $0) }) == Set(payloads))
+    }
+
+    @Test
     func `cancellation interrupts the archive walks`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
