@@ -2,6 +2,10 @@
 
 ## 0.77.1 — Unreleased
 
+### Fixed
+
+- Codex: keep counting cost for sessions Codex archives as `.jsonl.zst`; they previously dropped out of every cost window once Codex removed the plain log.
+
 ## 0.77.0 — 2026-10-16
 
 ### Highlights
@@ -53,10 +57,6 @@
 - Indonesian: translate the Keychain prompt shown before browser cookie decryption, which appeared in English (#4580).
 - Developer tests: isolate local test homes so incidental cost refreshes cannot invalidate the app's cost cache. (#4551) Thanks @postoso!
 - Developer tests: detached fixtures that ignore SIGTERM exit when the test process dies, with a 120-second backstop, so interrupted runs do not leave them running (#4570, #4567). Thanks @harjothkhara and @postoso!
-
-### Fixed
-
-- Codex: keep counting cost for sessions Codex archives as `.jsonl.zst`; they previously dropped out of every cost window once Codex removed the plain log.
 
 ## 0.76.0 — 2026-10-15
 

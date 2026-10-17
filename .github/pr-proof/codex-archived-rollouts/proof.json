@@ -129,5 +129,27 @@
     },
     "sameDatabaseInode": true
   },
+  "upgrade from 0.77.0 cache": {
+    "parserHashAfter": "2d6e5ef6073dc99b",
+    "parserHashBefore": "a47b70abaf8ad86c",
+    "plainRowsRetainedUnchanged": {
+      "rollout-2026-10-03T12-00-00-0199f0a0-0000-7000-8000-000000000006.jsonl": true,
+      "rollout-2026-10-05T12-00-00-0199f0a0-0000-7000-8000-000000000004.jsonl": true,
+      "rollout-2026-10-14T12-00-00-0199f0a0-0000-7000-8000-000000000001.jsonl": true
+    },
+    "report": {
+      "daily": {
+        "2026-10-03": 20,
+        "2026-10-05": 330,
+        "2026-10-08": 330,
+        "2026-10-09": 330,
+        "2026-10-14": 330
+      },
+      "days": 5,
+      "historyCoverageIsEstablished": true,
+      "totalTokens": 1340
+    },
+    "sameDatabaseInode": true
+  },
   "window": "--days 30"
 }

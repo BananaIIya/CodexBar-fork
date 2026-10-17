@@ -6,6 +6,10 @@ an isolated HOME for each scenario until totals repeat. Only fixture data is use
 personal paths, accounts or usage.
 
     run-proof.py --base <0.75.0 CodexBarCLI> --head <this branch's CodexBarCLI> --out <dir>
+    run-proof.py --upgrade-base 0.77.0=<0.77.0 CodexBarCLI> --head <this branch's CodexBarCLI> --out <dir>
+
+Each --upgrade-base adds an "upgrade from <version> cache" result; without --base, the other results already in
+<dir>/proof.json are kept.
 """
 import argparse
 import datetime as dt
@@ -154,12 +158,30 @@ def mirror_permissions(home):
     }
 
 
+def upgrade(base, head, codex_home, home):
+    """A cache written by `base` is adopted in place by this branch."""
+    run(base, codex_home, home, passes=3)
+    before = store_snapshot(home)
+    after_report = run(head, codex_home, home)
+    after = store_snapshot(home)
+    return {
+        'parserHashBefore': before['parserHash'], 'parserHashAfter': after['parserHash'],
+        'sameDatabaseInode': before['inode'] == after['inode'],
+        'plainRowsRetainedUnchanged': {name: before['files'][name] == after['files'].get(name)
+                                       for name in sorted(before['files'])},
+        'report': after_report,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--base', type=Path, required=True)
+    parser.add_argument('--base', type=Path)
+    parser.add_argument('--upgrade-base', action='append', default=[], metavar='VERSION=CLI')
     parser.add_argument('--head', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
+    if not args.base and not args.upgrade_base:
+        parser.error('pass --base, --upgrade-base, or both')
     # The default macOS umask; without explicit modes, new files would be 0644 and directories 0755.
     os.umask(0o022)
     with tempfile.TemporaryDirectory() as scratch:
@@ -167,30 +189,28 @@ def main():
         fixture, clean = scratch / 'codex-home', scratch / 'codex-home-no-corrupt'
         cases = build_fixture(fixture)
         build_fixture(clean, include_corrupt=False)
+        existing = args.out / 'proof.json'
+        result = json.loads(existing.read_text()) if not args.base and existing.exists() else {}
+        for spec in args.upgrade_base:
+            version, cli = spec.split('=', 1)
+            result[f'upgrade from {version} cache'] = upgrade(Path(cli), args.head, clean, scratch / f'u-{version}')
+        if not args.base:
+            args.out.mkdir(parents=True, exist_ok=True)
+            existing.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return
         reference = scratch / 'codex-home-decompressed'
         decompressed_copy(fixture, reference)
 
-        result = {'fixture': cases, 'window': '--days 30', 'scenarios': {
+        result.update({'fixture': cases, 'window': '--days 30', 'scenarios': {
             'base 0.75.0, fixture': run(args.base, fixture, scratch / 'h1'),
             'head, fixture': run(args.head, fixture, scratch / 'h2'),
             'base 0.75.0, every archive decompressed in place (reference)': run(args.base, reference, scratch / 'h3'),
             'head, fixture without the corrupt archive': run(args.head, clean, scratch / 'h4'),
-        }}
+        }})
         result['head mirror permissions (fixture run)'] = mirror_permissions(scratch / 'h2')
 
-        # Upgrade: a 0.75.0 cache is adopted in place by this branch.
-        upgrade = scratch / 'h5'
-        run(args.base, clean, upgrade, passes=3)
-        before = store_snapshot(upgrade)
-        after_report = run(args.head, clean, upgrade)
-        after = store_snapshot(upgrade)
-        result['upgrade from 0.75.0 cache'] = {
-            'parserHashBefore': before['parserHash'], 'parserHashAfter': after['parserHash'],
-            'sameDatabaseInode': before['inode'] == after['inode'],
-            'plainRowsRetainedUnchanged': {name: before['files'][name] == after['files'].get(name)
-                                           for name in sorted(before['files'])},
-            'report': after_report,
-        }
+        result['upgrade from 0.75.0 cache'] = upgrade(args.base, args.head, clean, scratch / 'h5')
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / 'proof.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
     print(json.dumps(result, indent=2, sort_keys=True))
