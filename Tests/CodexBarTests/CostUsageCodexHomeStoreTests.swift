@@ -191,7 +191,7 @@ struct CostUsageCodexHomeStoreTests {
     }
 
     @Test
-    func `busy shared store is used in place and copied on the next access`() async throws {
+    func `busy ownership check never uses the shared store`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
         let (homeA, day, before, homeOptions) = try await Self.establishSharedHomeA(env: env)
@@ -203,18 +203,41 @@ struct CostUsageCodexHomeStoreTests {
             var holder: OpaquePointer?
             #expect(sqlite3_open_v2(shared.path, &holder, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK)
             #expect(sqlite3_exec(holder, "PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;", nil, nil, nil) == SQLITE_OK)
-            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == env.cacheRoot)
             let homeRoot = CodexHomeCostStoreScope.homeCacheRoot(
                 base: env.cacheRoot,
                 sessionsRoot: homeOptions.codexSessionsRoot!.standardizedFileURL)
-            #expect(!FileManager.default.fileExists(atPath: CostUsageStore.databaseURL(cacheRoot: homeRoot).path))
+            let probeRoot = env.root.appendingPathComponent("probe", isDirectory: true)
+            #expect(CodexHomeCostStoreScope.adoptSharedStoreIfOwned(
+                sharedCacheRoot: env.cacheRoot,
+                homeCacheRoot: probeRoot,
+                options: homeOptions) == .unknown)
+            // Unknown ownership routes to the home store, never the shared file.
+            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == homeRoot)
             sqlite3_exec(holder, "COMMIT", nil, nil, nil)
             sqlite3_close_v2(holder)
 
-            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == homeRoot)
             let after = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
             #expect(after.historyCoverageIsEstablished)
             #expect(after.sessionTokens == before.sessionTokens)
+        }
+    }
+
+    @Test
+    func `unreadable shared store is unknown ownership and never the shared root`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+        let (_, _, _, homeOptions) = try await Self.establishSharedHomeA(env: env)
+        let shared = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot)
+
+        try await Self.withProductionDefaults(env: env) {
+            try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: shared.path)
+            defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: shared.path) }
+            let probeRoot = env.root.appendingPathComponent("probe", isDirectory: true)
+            #expect(CodexHomeCostStoreScope.adoptSharedStoreIfOwned(
+                sharedCacheRoot: env.cacheRoot,
+                homeCacheRoot: probeRoot,
+                options: homeOptions) == .unknown)
+            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) != env.cacheRoot)
         }
     }
 

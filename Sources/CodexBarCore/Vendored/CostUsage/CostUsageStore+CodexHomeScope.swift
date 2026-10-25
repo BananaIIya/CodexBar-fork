@@ -77,10 +77,12 @@ enum CodexHomeCostStoreScope {
         }
         switch self.adoptSharedStoreIfOwned(sharedCacheRoot: base, homeCacheRoot: root, options: options) {
         case .deferred:
-            // The shared file holds this home's history but could not be copied yet. Use it in place,
+            // Ownership is confirmed but the copy was busy or failed. Use the shared file in place,
             // as before per-home stores, rather than start an empty home store; the next access retries.
             return base
-        case .adopted, .notApplicable:
+        case .adopted, .notApplicable, .unknown:
+            // `.unknown` (ownership unreadable) must never reach the shared file, which `~/.codex`
+            // may own. Create the home store normally: one catch-up scan, no mixed data.
             self.pruneMissingHomeStores(in: root.deletingLastPathComponent(), keeping: root)
             return root
         }
@@ -90,8 +92,10 @@ enum CodexHomeCostStoreScope {
         case adopted
         /// No shared file, or it belongs to other roots.
         case notApplicable
-        /// The shared file belongs to this home but was busy or could not be copied.
+        /// The shared file is confirmed to belong to this home but was busy or could not be copied.
         case deferred
+        /// Ownership could not be read (busy past the timeout, or the file would not open).
+        case unknown
     }
 
     /// Before per-home stores, a custom-home user's history lived in the shared file. Copy it into the
@@ -117,16 +121,16 @@ enum CodexHomeCostStoreScope {
         var source: OpaquePointer?
         guard sqlite3_open_v2(shared.path, &source, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK, let source else {
             sqlite3_close_v2(source)
-            return .deferred
+            return .unknown
         }
         defer { sqlite3_close_v2(source) }
         sqlite3_busy_timeout(source, Self.adoptionBusyTimeoutMilliseconds)
         _ = sqlite3_exec(source, "PRAGMA query_only=1", nil, nil, nil)
         // One read transaction covers the ownership check and the copy, so both see the same snapshot.
-        guard sqlite3_exec(source, "BEGIN", nil, nil, nil) == SQLITE_OK else { return .deferred }
+        guard sqlite3_exec(source, "BEGIN", nil, nil, nil) == SQLITE_OK else { return .unknown }
         defer { sqlite3_exec(source, "COMMIT", nil, nil, nil) }
         switch Self.storedRootsMatch(source, expectedRoots: expectedRoots) {
-        case .none: return .deferred
+        case .none: return .unknown
         case .some(false): return .notApplicable
         case .some(true): break
         }
