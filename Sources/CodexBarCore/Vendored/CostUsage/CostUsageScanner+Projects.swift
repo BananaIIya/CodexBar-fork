@@ -125,7 +125,7 @@ extension CostUsageScanner {
                     databaseURL: databaseURL,
                     sessionSource: SessionToolActivitySource(fileURL: URL(fileURLWithPath: file.path), sessionID: id),
                     parsedBytes: file.usage.parsedBytes,
-                    modelsDevCacheRoot: modelsDevCacheRoot),
+                    modelsDevCacheRoot: modelsDevCacheRoot ?? ModelsDevCache.defaultCacheRoot()),
                 usage: file.usage,
                 report: file.report,
                 projectPathResolver: projectPathResolver,

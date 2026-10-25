@@ -126,7 +126,8 @@ struct CostUsageSessionDetailsTests {
         let wrongSession = CostUsageSessionDetailSource(
             databaseURL: fixture.source.databaseURL,
             sessionSource: .init(fileURL: fixture.source.sessionSource.fileURL, sessionID: "another-account"),
-            parsedBytes: fixture.source.parsedBytes)
+            parsedBytes: fixture.source.parsedBytes,
+            modelsDevCacheRoot: fixture.root)
         #expect(throws: CostUsageSessionDetailError.unavailable) {
             try CostUsageSessionDetailLoader.read(
                 source: wrongSession,
@@ -213,7 +214,8 @@ struct CostUsageSessionDetailsTests {
             sessionSource: .init(
                 fileURL: root.appendingPathComponent("session.jsonl"),
                 sessionID: "missing"),
-            parsedBytes: nil)
+            parsedBytes: nil,
+            modelsDevCacheRoot: root)
         let now = Date(timeIntervalSince1970: 1_792_562_400)
         #expect(throws: CostUsageSessionDetailError.unavailable) {
             try CostUsageSessionDetailLoader.read(
@@ -242,6 +244,40 @@ struct CostUsageSessionDetailsTests {
             turnPerformanceSamples: []).requestDetailSource != nil)
     }
 
+    @Test
+    func `a per home store without a pricing root prices details from the production catalog`() throws {
+        let fixture = try Fixture(knownCost: false)
+        defer { fixture.remove() }
+        let pricingRoot = FileManager.default.temporaryDirectory.appendingPathComponent("pricing-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: pricingRoot) }
+        let catalog = try JSONDecoder().decode(ModelsDevCatalog.self, from: JSONSerialization.data(withJSONObject: [
+            "openai": ["id": "openai", "models": [
+                "fictional-selected-model": ["id": "fictional-selected-model", "cost": ["input": 1000, "output": 0]],
+            ]],
+        ]))
+        #expect(ModelsDevCache.save(catalog: catalog, fetchedAt: fixture.now, cacheRoot: pricingRoot))
+        var hooks = CostUsageStoreTestHooks.current
+        hooks.modelsDevDefaultCacheRoot = pricingRoot
+        try CostUsageStoreTestHooks.$current.withValue(hooks) {
+            // The fixture store stands in for a per-home store with no models.dev cache beside it.
+            let session = try #require(CostUsageScanner.buildCodexReportProjectionsFromCache(
+                cache: fixture.cache,
+                range: fixture.dayRange,
+                detailStoreCacheRoot: fixture.root).sessions.first)
+            let source = try #require(session.requestDetailSource)
+            #expect(source.databaseURL == fixture.source.databaseURL)
+            #expect(source.modelsDevCacheRoot == pricingRoot)
+            let costs = try CostUsageSessionDetailLoader.read(
+                source: source,
+                lastActivity: fixture.now,
+                range: fixture.range,
+                timeZone: fixture.calendar.timeZone).compactMap(\.costUSD)
+            #expect(costs.count == 2)
+            #expect(costs.allSatisfy { $0 > 0 })
+            #expect(abs(costs.reduce(0, +) - (session.costUSD ?? -1)) < 1e-12)
+        }
+    }
+
     private struct Fixture {
         let root: URL
         let now: Date
@@ -251,7 +287,7 @@ struct CostUsageSessionDetailsTests {
         let cache: CostUsageCache
         let source: CostUsageSessionDetailSource
 
-        init(fileCount: Int = 1, priority: Bool = false) throws {
+        init(fileCount: Int = 1, priority: Bool = false, knownCost: Bool = true) throws {
             self.root = FileManager.default.temporaryDirectory.appendingPathComponent("session-details-\(UUID())")
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = try #require(TimeZone(identifier: "Asia/Shanghai"))
@@ -286,7 +322,7 @@ struct CostUsageSessionDetailsTests {
                         cached: 80,
                         output: 10,
                         reasoning: 4,
-                        knownCostNanos: priority ? nil : 100_000_000,
+                        knownCostNanos: priority || !knownCost ? nil : 100_000_000,
                         pricingModel: model,
                         pricingMode: "standard")
                 }
@@ -307,7 +343,8 @@ struct CostUsageSessionDetailsTests {
                 sessionSource: .init(
                     fileURL: self.root.appendingPathComponent("session-0.jsonl"),
                     sessionID: "session-0"),
-                parsedBytes: 1)
+                parsedBytes: 1,
+                modelsDevCacheRoot: self.root)
             _ = CostUsageStoreAccess.replace(cacheRoot: self.root, cache: cache, calendar: calendar)
         }
 

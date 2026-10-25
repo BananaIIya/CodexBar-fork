@@ -11,14 +11,14 @@ public struct CostUsageSessionDetailSource: Sendable, Equatable, Hashable {
     public let databaseURL: URL
     public let sessionSource: SessionToolActivitySource
     public let parsedBytes: Int64?
-    /// Pricing cache root. Nil derives it from the database path, which only holds for the shared store.
-    public let modelsDevCacheRoot: URL?
+    /// Resolved pricing cache root. Never derived from the database path, which may be a per-home store.
+    public let modelsDevCacheRoot: URL
 
     public init(
         databaseURL: URL,
         sessionSource: SessionToolActivitySource,
         parsedBytes: Int64?,
-        modelsDevCacheRoot: URL? = nil)
+        modelsDevCacheRoot: URL)
     {
         self.databaseURL = databaseURL
         self.sessionSource = sessionSource
@@ -96,13 +96,11 @@ public enum CostUsageSessionDetailLoader {
             until: range.upperBound.addingTimeInterval(-0.001),
             calendar: calendar)
         var turns = CostUsageScanner.SessionTurns()
-        let cacheRoot = source.modelsDevCacheRoot
-            ?? source.databaseURL.deletingLastPathComponent().deletingLastPathComponent()
         let report = CostUsageScanner.buildCodexReportFromCache(
             cache: cache,
             range: days,
             modelsDevCatalog: catalog,
-            modelsDevCacheRoot: cacheRoot,
+            modelsDevCacheRoot: source.modelsDevCacheRoot,
             onPricedRow: { row, cost, complete in turns.add(row, cost: cost, isComplete: complete) })
         try checkCancellation()
         return turns.build(report: report)

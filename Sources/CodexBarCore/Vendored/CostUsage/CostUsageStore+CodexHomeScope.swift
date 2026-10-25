@@ -67,33 +67,27 @@ enum CodexHomeCostStoreScope {
     {
         let root = self.homeCacheRoot(base: base, sessionsRoot: sessionsRoot)
         let fileManager = FileManager.default
-        // Key on the database, not the folder: a skipped or failed copy leaves the folder behind,
-        // and the next access must retry it before an empty home database is created.
+        // Key on the database, not the folder: until the home store is first written, a later access
+        // may still adopt the shared file.
         guard !fileManager.fileExists(atPath: CostUsageStore.databaseURL(cacheRoot: root).path) else { return root }
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         let marker = root.appendingPathComponent(Self.markerFilename)
         if !fileManager.fileExists(atPath: marker.path) {
             try? Data(sessionsRoot.path.utf8).write(to: marker)
         }
-        switch self.adoptSharedStoreIfOwned(sharedCacheRoot: base, homeCacheRoot: root, options: options) {
-        case .deferred:
-            // Ownership is confirmed but the copy was busy or failed. Use the shared file in place,
-            // as before per-home stores, rather than start an empty home store; the next access retries.
-            return base
-        case .adopted, .notApplicable, .unknown:
-            // `.unknown` (ownership unreadable) must never reach the shared file, which `~/.codex`
-            // may own. Create the home store normally: one catch-up scan, no mixed data.
-            self.pruneMissingHomeStores(in: root.deletingLastPathComponent(), keeping: root)
-            return root
-        }
+        // A custom home never uses the shared file, which `~/.codex` may own. If the copy is not made,
+        // the home store starts empty and catches up from session files once.
+        self.adoptSharedStoreIfOwned(sharedCacheRoot: base, homeCacheRoot: root, options: options)
+        self.pruneMissingHomeStores(in: root.deletingLastPathComponent(), keeping: root)
+        return root
     }
 
     enum Adoption: Equatable {
         case adopted
         /// No shared file, or it belongs to other roots.
         case notApplicable
-        /// The shared file is confirmed to belong to this home but was busy or could not be copied.
-        case deferred
+        /// The shared file belongs to this home but could not be copied.
+        case copyFailed
         /// Ownership could not be read (busy past the timeout, or the file would not open).
         case unknown
     }
@@ -138,6 +132,9 @@ enum CodexHomeCostStoreScope {
             .appendingPathComponent(".\(target.lastPathComponent).\(UUID().uuidString).adopting")
         defer { try? fileManager.removeItem(at: temporary) }
         do {
+            #if DEBUG
+            if CostUsageStoreTestHooks.current.codexHomeAdoptionCopyFailure { throw CocoaError(.fileWriteUnknown) }
+            #endif
             try fileManager.createDirectory(
                 at: temporary.deletingLastPathComponent(),
                 withIntermediateDirectories: true)
@@ -146,8 +143,8 @@ enum CodexHomeCostStoreScope {
             try fileManager.moveItem(at: temporary, to: target)
         } catch {
             if fileManager.fileExists(atPath: target.path) { return .adopted }
-            CostUsageStore.log.warning("Codex home store copy deferred: \(error.localizedDescription)")
-            return .deferred
+            CostUsageStore.log.warning("Codex home store copy failed: \(error.localizedDescription)")
+            return .copyFailed
         }
         return .adopted
     }

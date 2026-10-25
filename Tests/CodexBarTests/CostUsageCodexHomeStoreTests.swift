@@ -281,32 +281,46 @@ struct CostUsageCodexHomeStoreTests {
     }
 
     @Test
-    func `failed copy uses the shared store and is retried on the next access`() async throws {
+    func `failed copy creates the home store and never uses the shared store`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
         let (homeA, day, before, homeOptions) = try await Self.establishSharedHomeA(env: env)
         let unbounded = Self.unboundedOptions(env: env)
+        let shared = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot)
+        let sharedInode = try Self.inode(shared)
+        let sharedBytes = try Data(contentsOf: shared)
 
         try await Self.withProductionDefaults(env: env) {
-            let homeRoot = CodexHomeCostStoreScope.homeCacheRoot(
-                base: env.cacheRoot,
-                sessionsRoot: homeOptions.codexSessionsRoot!.standardizedFileURL)
-            let databaseDirectory = CostUsageStore.databaseURL(cacheRoot: homeRoot).deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: databaseDirectory, withIntermediateDirectories: true)
-            // A read-only folder makes the copy fail, like a full disk would.
-            try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: databaseDirectory.path)
-            let failed = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
-            #expect(failed.historyCoverageIsEstablished)
-            #expect(failed.sessionTokens == before.sessionTokens)
-            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == env.cacheRoot)
+            // A read-only folder makes the copy itself fail, like a full disk would.
+            let probeRoot = env.root.appendingPathComponent("probe", isDirectory: true)
+            let probeDirectory = CostUsageStore.databaseURL(cacheRoot: probeRoot).deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: probeDirectory, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: probeDirectory.path)
+            defer {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: probeDirectory.path)
+            }
+            #expect(CodexHomeCostStoreScope.adoptSharedStoreIfOwned(
+                sharedCacheRoot: env.cacheRoot,
+                homeCacheRoot: probeRoot,
+                options: homeOptions) == .copyFailed)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: probeDirectory.path).isEmpty)
+        }
 
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: databaseDirectory.path)
-            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == homeRoot)
-            #expect(try FileManager.default.contentsOfDirectory(atPath: databaseDirectory.path)
-                .allSatisfy { !$0.hasSuffix(".adopting") })
-            let after = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
-            #expect(after.historyCoverageIsEstablished)
-            #expect(after.sessionTokens == before.sessionTokens)
+        var hooks = CostUsageStoreTestHooks.current
+        hooks.codexHomeAdoptionCopyFailure = true
+        try await CostUsageStoreTestHooks.$current.withValue(hooks) {
+            try await Self.withProductionDefaults(env: env) {
+                let homeRoot = CodexHomeCostStoreScope.homeCacheRoot(
+                    base: env.cacheRoot,
+                    sessionsRoot: homeOptions.codexSessionsRoot!.standardizedFileURL)
+                let after = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
+                #expect(after.sessionTokens == before.sessionTokens)
+                #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == homeRoot)
+                #expect(FileManager.default.fileExists(atPath: CostUsageStore.databaseURL(cacheRoot: homeRoot).path))
+                CostUsageStoreAccess.releaseSharedStoresForTesting(cacheRoot: env.cacheRoot)
+                #expect(try Self.inode(shared) == sharedInode)
+                #expect(try Data(contentsOf: shared) == sharedBytes)
+            }
         }
     }
 
