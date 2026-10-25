@@ -1,5 +1,10 @@
 import Foundation
 import Testing
+#if canImport(SQLite3)
+import SQLite3
+#elseif canImport(CSQLite3)
+import CSQLite3
+#endif
 @testable import CodexBarCore
 
 @Suite(.serialized)
@@ -92,49 +97,6 @@ struct CostUsageCodexHomeStoreTests {
     }
 
     @Test
-    func `new home stores prune missing homes and stay bounded`() throws {
-        let env = try CostUsageTestEnvironment()
-        defer { env.cleanup() }
-        let homes = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot).deletingLastPathComponent()
-            .appendingPathComponent(CodexHomeCostStoreScope.directoryName, isDirectory: true)
-        func seed(_ name: String, home: URL, age: TimeInterval) throws {
-            let database = CostUsageStore.databaseURL(cacheRoot: homes.appendingPathComponent(name))
-            try FileManager.default.createDirectory(
-                at: database.deletingLastPathComponent(),
-                withIntermediateDirectories: true)
-            try Data().write(to: database)
-            let marker = homes.appendingPathComponent(name)
-                .appendingPathComponent(CodexHomeCostStoreScope.markerFilename)
-            try Data(home.appendingPathComponent("sessions").path.utf8).write(to: marker)
-            for path in [database.path, marker.path] {
-                try FileManager.default.setAttributes(
-                    [.modificationDate: Date(timeIntervalSinceNow: -age)],
-                    ofItemAtPath: path)
-            }
-        }
-        let stale = CodexHomeCostStoreScope.staleHomeStoreAge
-        try seed("missing", home: env.root.appendingPathComponent("gone"), age: stale + 1000)
-        for index in 0..<CodexHomeCostStoreScope.maximumHomeStores {
-            let home = env.root.appendingPathComponent("home-\(index)", isDirectory: true)
-            try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
-            try seed("existing-\(index)", home: home, age: stale + TimeInterval(100 - index))
-        }
-
-        try Self.withProductionDefaults(env: env) {
-            let options = CostUsageScanner.Options(
-                codexSessionsRoot: env.root.appendingPathComponent("new-home/sessions"),
-                cacheRoot: env.cacheRoot)
-            let root = try #require(CodexHomeCostStoreScope.cacheRoot(options: options))
-            let remaining = try Set(FileManager.default.contentsOfDirectory(atPath: homes.path))
-            #expect(remaining.count == CodexHomeCostStoreScope.maximumHomeStores)
-            #expect(remaining.contains(root.lastPathComponent))
-            #expect(!remaining.contains("missing"))
-            #expect(!remaining.contains("existing-0"))
-            #expect(remaining.contains("existing-1"))
-        }
-    }
-
-    @Test
     func `explicit production cache root is scoped like the default`() throws {
         let production = CodexHomeCostStoreScope.productionCacheRoot()
         #expect(CodexHomeCostStoreScope.isDefaultCacheRoot(production, defaultCacheRoot: nil))
@@ -158,7 +120,7 @@ struct CostUsageCodexHomeStoreTests {
     }
 
     @Test
-    func `custom home adopts the shared store it already owns`() async throws {
+    func `custom home copies the shared store it already owns`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
         let day = try env.makeLocalNoon(year: 2026, month: 4, day: 8)
@@ -166,10 +128,7 @@ struct CostUsageCodexHomeStoreTests {
         for index in 0..<3 {
             try Self.writeSession(home: homeA, env: env, day: day, name: "a-\(index).jsonl", tokens: 100 + index)
         }
-        var unbounded = CostUsageScanner.Options(
-            cacheRoot: env.cacheRoot,
-            codexTraceDatabaseURL: env.root.appendingPathComponent("missing.sqlite"))
-        unbounded.refreshMinIntervalSeconds = 0
+        let unbounded = Self.unboundedOptions(env: env)
 
         // Without the defaults hook this cache root is caller-owned, so A writes the shared file as before.
         let before = try await Self.establish(home: homeA, now: day, options: unbounded)
@@ -177,18 +136,20 @@ struct CostUsageCodexHomeStoreTests {
         CostUsageStoreAccess.releaseSharedStoresForTesting(cacheRoot: env.cacheRoot)
         let shared = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot)
         let sharedInode = try Self.inode(shared)
+        let sharedBytes = try Data(contentsOf: shared)
 
         try await Self.withProductionDefaults(env: env) {
-            // A first scan of an empty store is never established, so coverage must come from the adopted file.
+            // A first scan of an empty store is never established, so coverage must come from the copy.
             let after = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
             #expect(after.historyCoverageIsEstablished)
             #expect(after.sessionTokens == before.sessionTokens)
             #expect(after.last30DaysTokens == before.last30DaysTokens)
             let homeOptions = Self.options(unbounded, home: homeA)
             let homeRoot = try #require(CodexHomeCostStoreScope.cacheRoot(options: homeOptions))
-            let adopted = CostUsageStore.databaseURL(cacheRoot: homeRoot)
-            #expect(try Self.inode(adopted) == sharedInode)
-            #expect(!FileManager.default.fileExists(atPath: shared.path))
+            #expect(homeRoot != env.cacheRoot)
+            #expect(try Self.inode(CostUsageStore.databaseURL(cacheRoot: homeRoot)) != sharedInode)
+            #expect(try Self.inode(shared) == sharedInode)
+            #expect(try Data(contentsOf: shared) == sharedBytes)
         }
     }
 
@@ -200,10 +161,7 @@ struct CostUsageCodexHomeStoreTests {
         let homeA = env.root.appendingPathComponent("home-a", isDirectory: true)
         try Self.writeSession(home: env.codexHomeRoot, env: env, day: day, name: "default.jsonl", tokens: 42)
         try Self.writeSession(home: homeA, env: env, day: day, name: "a.jsonl", tokens: 7)
-        var options = CostUsageScanner.Options(
-            cacheRoot: env.cacheRoot,
-            codexTraceDatabaseURL: env.root.appendingPathComponent("missing.sqlite"))
-        options.refreshMinIntervalSeconds = 0
+        let options = Self.unboundedOptions(env: env)
 
         try await Self.withProductionDefaults(env: env) {
             let defaultSnapshot = try await Self.establish(home: env.codexHomeRoot, now: day, options: options)
@@ -211,6 +169,14 @@ struct CostUsageCodexHomeStoreTests {
             CostUsageStoreAccess.releaseSharedStoresForTesting(cacheRoot: env.cacheRoot)
             let shared = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot)
             let sharedInode = try Self.inode(shared)
+
+            let homeOptions = Self.options(options, home: homeA)
+            let probeRoot = env.root.appendingPathComponent("probe", isDirectory: true)
+            #expect(CodexHomeCostStoreScope.adoptSharedStoreIfOwned(
+                sharedCacheRoot: env.cacheRoot,
+                homeCacheRoot: probeRoot,
+                options: homeOptions) == .notApplicable)
+            #expect(!FileManager.default.fileExists(atPath: CostUsageStore.databaseURL(cacheRoot: probeRoot).path))
 
             let snapshotA = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: options)
             #expect(snapshotA.sessionTokens == 7)
@@ -225,68 +191,70 @@ struct CostUsageCodexHomeStoreTests {
     }
 
     @Test
-    func `pruning counts wal writes and skips stores open in this process`() throws {
+    func `busy shared store is used in place and copied on the next access`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
-        let homes = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot).deletingLastPathComponent()
-            .appendingPathComponent(CodexHomeCostStoreScope.directoryName, isDirectory: true)
-        func seed(_ name: String, age: TimeInterval, walAge: TimeInterval? = nil) throws {
-            let home = env.root.appendingPathComponent("home-\(name)", isDirectory: true)
-            try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
-            let database = CostUsageStore.databaseURL(cacheRoot: homes.appendingPathComponent(name))
-            try FileManager.default.createDirectory(
-                at: database.deletingLastPathComponent(),
-                withIntermediateDirectories: true)
-            try Data().write(to: database)
-            let marker = homes.appendingPathComponent(name)
-                .appendingPathComponent(CodexHomeCostStoreScope.markerFilename)
-            try Data(home.appendingPathComponent("sessions").path.utf8).write(to: marker)
-            for path in [database.path, marker.path] {
-                try FileManager.default.setAttributes(
-                    [.modificationDate: Date(timeIntervalSinceNow: -age)],
-                    ofItemAtPath: path)
-            }
-            if let walAge {
-                let wal = URL(fileURLWithPath: database.path + "-wal")
-                try Data().write(to: wal)
-                try FileManager.default.setAttributes(
-                    [.modificationDate: Date(timeIntervalSinceNow: -walAge)],
-                    ofItemAtPath: wal.path)
-            }
-        }
-        // walOnly has the oldest main file but the newest WAL; open has the next oldest main file.
-        let stale = CodexHomeCostStoreScope.staleHomeStoreAge
-        try seed("walOnly", age: stale + 1000, walAge: 1)
-        try seed("open", age: stale + 900)
-        for index in 0..<(CodexHomeCostStoreScope.maximumHomeStores - 2) {
-            try seed("existing-\(index)", age: stale + TimeInterval(500 - index))
-        }
-        let openStore = CostUsageStore(cacheRoot: homes.appendingPathComponent("open"))
+        let (homeA, day, before, homeOptions) = try await Self.establishSharedHomeA(env: env)
+        let unbounded = Self.unboundedOptions(env: env)
+        let shared = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot)
 
-        try withExtendedLifetime(openStore) {
-            try Self.withProductionDefaults(env: env) {
-                let options = CostUsageScanner.Options(
-                    codexSessionsRoot: env.root.appendingPathComponent("new-home/sessions"),
-                    cacheRoot: env.cacheRoot)
-                let root = try #require(CodexHomeCostStoreScope.cacheRoot(options: options))
-                let remaining = try Set(FileManager.default.contentsOfDirectory(atPath: homes.path))
-                #expect(remaining.count == CodexHomeCostStoreScope.maximumHomeStores)
-                #expect(remaining.contains(root.lastPathComponent))
-                #expect(remaining.contains("walOnly"))
-                #expect(remaining.contains("open"))
-                #expect(!remaining.contains("existing-0"))
-                #expect(remaining.contains("existing-1"))
-            }
+        try await Self.withProductionDefaults(env: env) {
+            // An exclusive-mode writer locks every other connection out, as a busy store would.
+            var holder: OpaquePointer?
+            #expect(sqlite3_open_v2(shared.path, &holder, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK)
+            #expect(sqlite3_exec(holder, "PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;", nil, nil, nil) == SQLITE_OK)
+            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == env.cacheRoot)
+            let homeRoot = CodexHomeCostStoreScope.homeCacheRoot(
+                base: env.cacheRoot,
+                sessionsRoot: homeOptions.codexSessionsRoot!.standardizedFileURL)
+            #expect(!FileManager.default.fileExists(atPath: CostUsageStore.databaseURL(cacheRoot: homeRoot).path))
+            sqlite3_exec(holder, "COMMIT", nil, nil, nil)
+            sqlite3_close_v2(holder)
+
+            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == homeRoot)
+            let after = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
+            #expect(after.historyCoverageIsEstablished)
+            #expect(after.sessionTokens == before.sessionTokens)
         }
     }
 
     @Test
-    func `pruning keeps recently touched stores even past the bound`() throws {
+    func `failed copy uses the shared store and is retried on the next access`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+        let (homeA, day, before, homeOptions) = try await Self.establishSharedHomeA(env: env)
+        let unbounded = Self.unboundedOptions(env: env)
+
+        try await Self.withProductionDefaults(env: env) {
+            let homeRoot = CodexHomeCostStoreScope.homeCacheRoot(
+                base: env.cacheRoot,
+                sessionsRoot: homeOptions.codexSessionsRoot!.standardizedFileURL)
+            let databaseDirectory = CostUsageStore.databaseURL(cacheRoot: homeRoot).deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: databaseDirectory, withIntermediateDirectories: true)
+            // A read-only folder makes the copy fail, like a full disk would.
+            try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: databaseDirectory.path)
+            let failed = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
+            #expect(failed.historyCoverageIsEstablished)
+            #expect(failed.sessionTokens == before.sessionTokens)
+            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == env.cacheRoot)
+
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: databaseDirectory.path)
+            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == homeRoot)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: databaseDirectory.path)
+                .allSatisfy { !$0.hasSuffix(".adopting") })
+            let after = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
+            #expect(after.historyCoverageIsEstablished)
+            #expect(after.sessionTokens == before.sessionTokens)
+        }
+    }
+
+    @Test
+    func `pruning removes only stores of homes missing past the grace period`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
         let homes = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot).deletingLastPathComponent()
             .appendingPathComponent(CodexHomeCostStoreScope.directoryName, isDirectory: true)
-        func seed(_ name: String, homeExists: Bool, age: TimeInterval) throws {
+        func seed(_ name: String, homeExists: Bool, age: TimeInterval, walAge: TimeInterval? = nil) throws {
             let home = env.root.appendingPathComponent("home-\(name)", isDirectory: true)
             if homeExists {
                 try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
@@ -297,23 +265,26 @@ struct CostUsageCodexHomeStoreTests {
                 at: database.deletingLastPathComponent(),
                 withIntermediateDirectories: true)
             try Data().write(to: database)
-            let marker = store.appendingPathComponent(CodexHomeCostStoreScope.markerFilename)
-            try Data(home.appendingPathComponent("sessions").path.utf8).write(to: marker)
-            for path in [database.path, marker.path] {
+            try Data(home.appendingPathComponent("sessions").path.utf8)
+                .write(to: store.appendingPathComponent(CodexHomeCostStoreScope.markerFilename))
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date(timeIntervalSinceNow: -age)],
+                ofItemAtPath: database.path)
+            if let walAge {
+                let wal = URL(fileURLWithPath: database.path + "-wal")
+                try Data().write(to: wal)
                 try FileManager.default.setAttributes(
-                    [.modificationDate: Date(timeIntervalSinceNow: -age)],
-                    ofItemAtPath: path)
+                    [.modificationDate: Date(timeIntervalSinceNow: -walAge)],
+                    ofItemAtPath: wal.path)
             }
         }
         let grace = CodexHomeCostStoreScope.missingHomeGracePeriod
-        let stale = CodexHomeCostStoreScope.staleHomeStoreAge
+        try seed("missingOld", homeExists: false, age: grace + 3600)
         // Another process may still use a store whose home just disappeared.
         try seed("missingRecent", homeExists: false, age: grace - 3600)
-        try seed("missingOld", homeExists: false, age: grace + 3600)
-        // Over the bound, but only one of these has been untouched long enough to remove.
-        try seed("stale", homeExists: true, age: stale + 3600)
-        for index in 0..<CodexHomeCostStoreScope.maximumHomeStores {
-            try seed("recent-\(index)", homeExists: true, age: stale - 3600 - TimeInterval(index))
+        try seed("missingRecentWal", homeExists: false, age: grace + 3600, walAge: 60)
+        for index in 0..<12 {
+            try seed("existing-\(index)", homeExists: true, age: 365 * 24 * 3600)
         }
 
         try Self.withProductionDefaults(env: env) {
@@ -323,91 +294,12 @@ struct CostUsageCodexHomeStoreTests {
             let root = try #require(CodexHomeCostStoreScope.cacheRoot(options: options))
             let remaining = try Set(FileManager.default.contentsOfDirectory(atPath: homes.path))
             #expect(remaining.contains(root.lastPathComponent))
-            #expect(remaining.contains("missingRecent"))
             #expect(!remaining.contains("missingOld"))
-            #expect(!remaining.contains("stale"))
-            for index in 0..<CodexHomeCostStoreScope.maximumHomeStores {
-                #expect(remaining.contains("recent-\(index)"))
+            #expect(remaining.contains("missingRecent"))
+            #expect(remaining.contains("missingRecentWal"))
+            for index in 0..<12 {
+                #expect(remaining.contains("existing-\(index)"))
             }
-            #expect(remaining.count == CodexHomeCostStoreScope.maximumHomeStores + 2)
-        }
-    }
-
-    @Test
-    func `skipped adoption is retried on the next access`() async throws {
-        let env = try CostUsageTestEnvironment()
-        defer { env.cleanup() }
-        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 8)
-        let homeA = env.root.appendingPathComponent("home-a", isDirectory: true)
-        for index in 0..<3 {
-            try Self.writeSession(home: homeA, env: env, day: day, name: "a-\(index).jsonl", tokens: 100 + index)
-        }
-        var unbounded = CostUsageScanner.Options(
-            cacheRoot: env.cacheRoot,
-            codexTraceDatabaseURL: env.root.appendingPathComponent("missing.sqlite"))
-        unbounded.refreshMinIntervalSeconds = 0
-        let before = try await Self.establish(home: homeA, now: day, options: unbounded)
-        #expect(before.historyCoverageIsEstablished)
-        CostUsageStoreAccess.releaseSharedStoresForTesting(cacheRoot: env.cacheRoot)
-        let shared = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot)
-        let sharedInode = try Self.inode(shared)
-        let homeOptions = Self.options(unbounded, home: homeA)
-
-        try await Self.withProductionDefaults(env: env) {
-            var holder: CostUsageStore? = CostUsageStore(cacheRoot: env.cacheRoot)
-            #expect(holder != nil)
-            // Busy: this access keeps using the shared file in place and creates no empty home store.
-            let busy = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
-            #expect(busy.historyCoverageIsEstablished)
-            #expect(busy.sessionTokens == before.sessionTokens)
-            #expect(CodexHomeCostStoreScope.cacheRoot(options: homeOptions) == env.cacheRoot)
-            #expect(try Self.inode(shared) == sharedInode)
-
-            holder = nil
-            CostUsageStoreAccess.releaseSharedStoresForTesting(cacheRoot: env.cacheRoot)
-            let homeRoot = try #require(CodexHomeCostStoreScope.cacheRoot(options: homeOptions))
-            #expect(homeRoot != env.cacheRoot)
-            #expect(try Self.inode(CostUsageStore.databaseURL(cacheRoot: homeRoot)) == sharedInode)
-            #expect(!FileManager.default.fileExists(atPath: shared.path))
-            let after = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(2), options: unbounded)
-            #expect(after.historyCoverageIsEstablished)
-            #expect(after.sessionTokens == before.sessionTokens)
-        }
-    }
-
-    @Test
-    func `adoption recovers after a crash between creating the home folder and the move`() async throws {
-        let env = try CostUsageTestEnvironment()
-        defer { env.cleanup() }
-        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 8)
-        let homeA = env.root.appendingPathComponent("home-a", isDirectory: true)
-        try Self.writeSession(home: homeA, env: env, day: day, name: "a.jsonl", tokens: 64)
-        var unbounded = CostUsageScanner.Options(
-            cacheRoot: env.cacheRoot,
-            codexTraceDatabaseURL: env.root.appendingPathComponent("missing.sqlite"))
-        unbounded.refreshMinIntervalSeconds = 0
-        let before = try await Self.establish(home: homeA, now: day, options: unbounded)
-        #expect(before.historyCoverageIsEstablished)
-        CostUsageStoreAccess.releaseSharedStoresForTesting(cacheRoot: env.cacheRoot)
-        let shared = CostUsageStore.databaseURL(cacheRoot: env.cacheRoot)
-        let sharedInode = try Self.inode(shared)
-        let homeOptions = Self.options(unbounded, home: homeA)
-
-        try await Self.withProductionDefaults(env: env) {
-            // Leave the state a crash after mkdir would: folder and marker, no database.
-            let sessionsRoot = try #require(CostUsageScanner.codexSessionsRoots(options: homeOptions).first)
-            let interrupted = CodexHomeCostStoreScope.homeCacheRoot(
-                base: env.cacheRoot,
-                sessionsRoot: sessionsRoot.standardizedFileURL)
-            try FileManager.default.createDirectory(at: interrupted, withIntermediateDirectories: true)
-            try Data(sessionsRoot.standardizedFileURL.path.utf8).write(
-                to: interrupted.appendingPathComponent(CodexHomeCostStoreScope.markerFilename))
-
-            let after = try await Self.snapshot(home: homeA, now: day.addingTimeInterval(1), options: unbounded)
-            #expect(after.historyCoverageIsEstablished)
-            #expect(after.sessionTokens == before.sessionTokens)
-            #expect(try Self.inode(CostUsageStore.databaseURL(cacheRoot: interrupted)) == sharedInode)
-            #expect(!FileManager.default.fileExists(atPath: shared.path))
         }
     }
 }
@@ -436,6 +328,28 @@ extension CostUsageCodexHomeStoreTests {
         var options = options
         options.codexSessionsRoot = home.appendingPathComponent("sessions", isDirectory: true)
         return options
+    }
+
+    private static func unboundedOptions(env: CostUsageTestEnvironment) -> CostUsageScanner.Options {
+        var options = CostUsageScanner.Options(
+            cacheRoot: env.cacheRoot,
+            codexTraceDatabaseURL: env.root.appendingPathComponent("missing.sqlite"))
+        options.refreshMinIntervalSeconds = 0
+        return options
+    }
+
+    /// Home A establishes coverage in the shared file, as it did before per-home stores.
+    private static func establishSharedHomeA(env: CostUsageTestEnvironment) async throws
+        -> (home: URL, day: Date, snapshot: CostUsageTokenSnapshot, options: CostUsageScanner.Options)
+    {
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 8)
+        let homeA = env.root.appendingPathComponent("home-a", isDirectory: true)
+        try Self.writeSession(home: homeA, env: env, day: day, name: "a.jsonl", tokens: 64)
+        let options = Self.unboundedOptions(env: env)
+        let before = try await Self.establish(home: homeA, now: day, options: options)
+        #expect(before.historyCoverageIsEstablished)
+        CostUsageStoreAccess.releaseSharedStoresForTesting(cacheRoot: env.cacheRoot)
+        return (homeA, day, before, Self.options(options, home: homeA))
     }
 
     private static func inode(_ url: URL) throws -> UInt64 {

@@ -1,5 +1,11 @@
 import Foundation
 
+#if canImport(SQLite3)
+import SQLite3
+#elseif canImport(CSQLite3)
+import CSQLite3
+#endif
+
 /// The Codex ledger keeps one scan inventory and lookback per database, so each Codex home
 /// needs its own database. `~/.codex` keeps the original file; other homes in the default
 /// cache directory get `cost-usage/codex-homes/<home key>/`. Callers that pass a different cache root
@@ -7,9 +13,6 @@ import Foundation
 enum CodexHomeCostStoreScope {
     static let directoryName = "codex-homes"
     static let markerFilename = "codex-home-path"
-    /// Home stores are derived data. This soft bound keeps stale or one-off homes from
-    /// accumulating; see `pruneHomeStores` for why recent stores may exceed it.
-    static let maximumHomeStores = 8
 
     struct Defaults: Sendable {
         var cacheRoot: URL?
@@ -63,10 +66,9 @@ enum CodexHomeCostStoreScope {
         options: CostUsageScanner.Options) -> URL
     {
         let root = self.homeCacheRoot(base: base, sessionsRoot: sessionsRoot)
-        let homesDirectory = root.deletingLastPathComponent()
         let fileManager = FileManager.default
-        // Key on the database, not the folder: a skipped or interrupted adoption leaves the folder
-        // behind, and the next access must retry it before an empty home database is created.
+        // Key on the database, not the folder: a skipped or failed copy leaves the folder behind,
+        // and the next access must retry it before an empty home database is created.
         guard !fileManager.fileExists(atPath: CostUsageStore.databaseURL(cacheRoot: root).path) else { return root }
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         let marker = root.appendingPathComponent(Self.markerFilename)
@@ -75,11 +77,11 @@ enum CodexHomeCostStoreScope {
         }
         switch self.adoptSharedStoreIfOwned(sharedCacheRoot: base, homeCacheRoot: root, options: options) {
         case .deferred:
-            // The shared file holds this home's history but cannot move yet. Use it in place, as
-            // before per-home stores, rather than start an empty home store; a later access retries.
+            // The shared file holds this home's history but could not be copied yet. Use it in place,
+            // as before per-home stores, rather than start an empty home store; the next access retries.
             return base
         case .adopted, .notApplicable:
-            self.pruneHomeStores(in: homesDirectory, keeping: root)
+            self.pruneMissingHomeStores(in: root.deletingLastPathComponent(), keeping: root)
             return root
         }
     }
@@ -88,15 +90,14 @@ enum CodexHomeCostStoreScope {
         case adopted
         /// No shared file, or it belongs to other roots.
         case notApplicable
-        /// The shared file belongs to this home but is busy or could not be moved.
+        /// The shared file belongs to this home but was busy or could not be copied.
         case deferred
     }
 
-    /// Before per-home stores, a custom-home user's history lived in the shared file. Move it into
-    /// the new home store only when its saved Codex roots are exactly this home's roots. Any other
-    /// home, `~/.codex` included, could not reuse those rows anyway: its root validation rejects them
-    /// and it rebuilds. Moving keeps one copy and avoids a second large file; the shared path then
-    /// starts fresh for whoever uses it next.
+    /// Before per-home stores, a custom-home user's history lived in the shared file. Copy it into the
+    /// new home store when its saved Codex roots are exactly this home's roots. The shared file is only
+    /// read, never moved, deleted or checkpointed, because the app and the CLI may both have it open;
+    /// `~/.codex` keeps using it and its root validation rejects another home's rows and rebuilds.
     @discardableResult
     static func adoptSharedStoreIfOwned(
         sharedCacheRoot: URL,
@@ -106,94 +107,109 @@ enum CodexHomeCostStoreScope {
         let fileManager = FileManager.default
         let shared = CostUsageStore.databaseURL(cacheRoot: sharedCacheRoot)
         let target = CostUsageStore.databaseURL(cacheRoot: homeCacheRoot)
-        guard fileManager.fileExists(atPath: shared.path), !fileManager.fileExists(atPath: target.path)
-        else { return .notApplicable }
         let expectedRoots = Set(CostUsageScanner.codexRootsFingerprint(options: options).keys)
-        let isOwned = { (view: CostUsageStoreReadView) -> Bool in
-            guard let roots = view.roots, view.lastScanUnixMs > 0, !expectedRoots.isEmpty else { return false }
-            return Set(roots.keys) == expectedRoots
-        }
-        if CostUsageStore.isOpenInProcess(databaseURL: shared) {
-            // Read through the warm shared store; never checkpoint or close a connection in use.
-            let view = CostUsageStoreAccess.readView(
-                cacheRoot: sharedCacheRoot,
-                calendar: options.calendar,
-                purpose: .status)
-            return isOwned(view) ? .deferred : .notApplicable
-        }
-        // Scoped so this store is released before the in-process check below.
-        let (owned, checkpointed): (Bool, Bool) = {
-            let store = CostUsageStore(cacheRoot: sharedCacheRoot)
-            let owned = isOwned(store.syncLoadCodexReadView(calendar: options.calendar, purpose: .status))
-            // Always close; the checkpoint empties the WAL so the main file holds every row.
-            return (owned, store.syncCheckpointAndClose())
-        }()
-        guard owned else { return .notApplicable }
-        guard checkpointed, !CostUsageStore.isOpenInProcess(databaseURL: shared) else { return .deferred }
-        do {
-            try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            // One rename moves the complete database; the emptied WAL and its index follow.
-            try fileManager.moveItem(at: shared, to: target)
-        } catch {
-            CostUsageStore.log.warning("Codex home store adoption deferred: \(error.localizedDescription)")
+        guard !expectedRoots.isEmpty, fileManager.fileExists(atPath: shared.path),
+              !fileManager.fileExists(atPath: target.path)
+        else { return .notApplicable }
+        // Read-write without create, so a WAL file without sidecars opens like any store connection
+        // (a read-only open cannot create them). This connection only reads; its close is the same
+        // passive checkpoint every store connection runs.
+        var source: OpaquePointer?
+        guard sqlite3_open_v2(shared.path, &source, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK, let source else {
+            sqlite3_close_v2(source)
             return .deferred
         }
-        for (from, to) in zip(Self.sidecars(of: shared), Self.sidecars(of: target))
-            where fileManager.fileExists(atPath: from.path)
-        {
-            try? fileManager.moveItem(at: from, to: to)
+        defer { sqlite3_close_v2(source) }
+        sqlite3_busy_timeout(source, Self.adoptionBusyTimeoutMilliseconds)
+        _ = sqlite3_exec(source, "PRAGMA query_only=1", nil, nil, nil)
+        // One read transaction covers the ownership check and the copy, so both see the same snapshot.
+        guard sqlite3_exec(source, "BEGIN", nil, nil, nil) == SQLITE_OK else { return .deferred }
+        defer { sqlite3_exec(source, "COMMIT", nil, nil, nil) }
+        switch Self.storedRootsMatch(source, expectedRoots: expectedRoots) {
+        case .none: return .deferred
+        case .some(false): return .notApplicable
+        case .some(true): break
+        }
+        let temporary = target.deletingLastPathComponent()
+            .appendingPathComponent(".\(target.lastPathComponent).\(UUID().uuidString).adopting")
+        defer { try? fileManager.removeItem(at: temporary) }
+        do {
+            try fileManager.createDirectory(
+                at: temporary.deletingLastPathComponent(),
+                withIntermediateDirectories: true)
+            try Self.backup(source, to: temporary)
+            // Fails instead of replacing if another process finished its copy first.
+            try fileManager.moveItem(at: temporary, to: target)
+        } catch {
+            if fileManager.fileExists(atPath: target.path) { return .adopted }
+            CostUsageStore.log.warning("Codex home store copy deferred: \(error.localizedDescription)")
+            return .deferred
         }
         return .adopted
     }
 
-    private static func sidecars(of database: URL) -> [URL] {
-        ["-wal", "-shm"].map { URL(fileURLWithPath: database.path + $0) }
+    static let adoptionBusyTimeoutMilliseconds: Int32 = 2000
+
+    /// `nil` when the shared file is busy; another failure means it holds no usable ledger.
+    private static func storedRootsMatch(_ database: OpaquePointer, expectedRoots: Set<String>) -> Bool? {
+        var statement: OpaquePointer?
+        var result = sqlite3_prepare_v2(database, "SELECT payload FROM scan_metadata WHERE id = 1", -1, &statement, nil)
+        defer { sqlite3_finalize(statement) }
+        if result == SQLITE_OK {
+            result = sqlite3_step(statement)
+        }
+        guard result == SQLITE_ROW else { return Self.isBusy(result) ? nil : false }
+        guard let bytes = sqlite3_column_blob(statement, 0),
+              let metadata = try? JSONDecoder().decode(
+                  CostUsageStoreMetadata.self,
+                  from: Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0)))),
+              metadata.lastScanUnixMs > 0,
+              let roots = metadata.rootMtimes
+        else { return false }
+        return Set(roots.keys) == expectedRoots
+    }
+
+    private static func isBusy(_ result: Int32) -> Bool {
+        result & 0xFF == SQLITE_BUSY || result & 0xFF == SQLITE_LOCKED
+    }
+
+    /// The online backup API copies a consistent snapshot while other processes read or write.
+    private static func backup(_ source: OpaquePointer, to destination: URL) throws {
+        var copy: OpaquePointer?
+        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+        guard sqlite3_open_v2(destination.path, &copy, flags, nil) == SQLITE_OK, let copy else {
+            sqlite3_close_v2(copy)
+            throw CocoaError(.fileWriteUnknown)
+        }
+        defer { sqlite3_close_v2(copy) }
+        guard let backup = sqlite3_backup_init(copy, "main", source, "main") else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        let step = sqlite3_backup_step(backup, -1)
+        let finish = sqlite3_backup_finish(backup)
+        guard step == SQLITE_DONE, finish == SQLITE_OK else {
+            throw NSError(domain: "SQLite", code: Int(step == SQLITE_DONE ? finish : step))
+        }
     }
 
     /// A store whose Codex home folder is gone is removed only after this long untouched, so a
     /// briefly unmounted or renamed home keeps its history.
     static let missingHomeGracePeriod: TimeInterval = 7 * 24 * 60 * 60
-    /// Beyond `maximumHomeStores`, only stores untouched this long are removed.
-    static let staleHomeStoreAge: TimeInterval = 30 * 24 * 60 * 60
 
-    /// Runs when a home store is about to be created. The app and the CLI can each hold a home
-    /// store open, and this process cannot see the other's connections, so age is the only signal
-    /// that is safe across processes: a store in use is written on every refresh, which updates
-    /// the newest mtime of its database, `-wal`, `-shm` and marker. Policy:
-    /// - a store whose home folder is gone is removed once untouched for `missingHomeGracePeriod`;
-    /// - beyond `maximumHomeStores`, the oldest stores are removed, but only those untouched for
-    ///   `staleHomeStoreAge`. Recently touched stores are kept even if that exceeds the bound.
-    /// Stores with a live connection in this process and the current store are never removed.
-    private static func pruneHomeStores(in directory: URL, keeping current: URL, now: Date = Date()) {
+    /// Runs when a home store is created. Stores of existing homes are never removed automatically,
+    /// so growth is bounded by the user's Codex homes; clearing the cost cache removes them all.
+    /// A store whose home folder is gone is removed once untouched for `missingHomeGracePeriod`.
+    static func pruneMissingHomeStores(in directory: URL, keeping current: URL, now: Date = Date()) {
         let fileManager = FileManager.default
         let entries = (try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles])) ?? []
-        var candidates: [(url: URL, modified: Date)] = []
-        var keptCount = 1
         for entry in entries where entry.standardizedFileURL.path != current.standardizedFileURL.path {
-            let database = CostUsageStore.databaseURL(cacheRoot: entry)
-            let modified = Self.lastWrite(database: database, marker: entry.appendingPathComponent(Self.markerFilename))
-            let age = now.timeIntervalSince(modified)
-            if CostUsageStore.isOpenInProcess(databaseURL: database) {
-                keptCount += 1
-                continue
-            }
-            if age > Self.missingHomeGracePeriod, Self.homeIsMissing(storeRoot: entry) {
+            let modified = Self.lastWrite(database: CostUsageStore.databaseURL(cacheRoot: entry))
+            if now.timeIntervalSince(modified) > Self.missingHomeGracePeriod, Self.homeIsMissing(storeRoot: entry) {
                 try? fileManager.removeItem(at: entry)
-                continue
             }
-            if age > Self.staleHomeStoreAge {
-                candidates.append((entry, modified))
-            } else {
-                keptCount += 1
-            }
-        }
-        let excess = keptCount + candidates.count - Self.maximumHomeStores
-        guard excess > 0 else { return }
-        for entry in candidates.sorted(by: { $0.modified < $1.modified }).prefix(excess) {
-            try? fileManager.removeItem(at: entry.url)
         }
     }
 
@@ -206,9 +222,9 @@ enum CodexHomeCostStoreScope {
     }
 
     /// Under WAL, recent writes may only touch the `-wal` and `-shm` files.
-    static func lastWrite(database: URL, marker: URL? = nil) -> Date {
-        ([database] + self.sidecars(of: database) + [marker].compactMap(\.self))
-            .compactMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.modificationDate] as? Date }
+    static func lastWrite(database: URL) -> Date {
+        [database.path, database.path + "-wal", database.path + "-shm"]
+            .compactMap { try? FileManager.default.attributesOfItem(atPath: $0)[.modificationDate] as? Date }
             .max() ?? .distantPast
     }
 
