@@ -14,6 +14,16 @@ public struct CostUsageSessionDetailSource: Sendable, Equatable, Hashable {
     /// Resolved pricing cache root. Never derived from the database path, which may be a per-home store.
     public let modelsDevCacheRoot: URL
 
+    /// Released 3-argument shape. Derives the pricing root from the database path as before; new callers should
+    /// use the explicit initializer.
+    public init(databaseURL: URL, sessionSource: SessionToolActivitySource, parsedBytes: Int64?) {
+        self.init(
+            databaseURL: databaseURL,
+            sessionSource: sessionSource,
+            parsedBytes: parsedBytes,
+            modelsDevCacheRoot: databaseURL.deletingLastPathComponent().deletingLastPathComponent())
+    }
+
     public init(
         databaseURL: URL,
         sessionSource: SessionToolActivitySource,

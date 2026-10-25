@@ -229,6 +229,17 @@ struct CostUsageSessionDetailsTests {
     }
 
     @Test
+    func `released three argument initializer derives the pricing root from the database path`() {
+        let root = URL(fileURLWithPath: "/tmp/codexbar-compat", isDirectory: true)
+        let source = CostUsageSessionDetailSource(
+            databaseURL: root.appendingPathComponent("cost-usage/codex.sqlite"),
+            sessionSource: .init(fileURL: root.appendingPathComponent("session.jsonl"), sessionID: "legacy"),
+            parsedBytes: 7)
+        #expect(source.modelsDevCacheRoot == root)
+        #expect(source.parsedBytes == 7)
+    }
+
+    @Test
     func `non native inspection metadata removes captured request source`() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
