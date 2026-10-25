@@ -41,6 +41,8 @@ enum CodexHomeCostStoreScope {
             return override
         }
         #endif
+        // Provider-specific by design: only the Codex ledger keeps one scan inventory per database,
+        // so only Codex homes need per-home stores, and `~/.codex` keeps the shared one.
         return Defaults(
             cacheRoot: nil,
             codexSessionsRoot: FileManager.default.homeDirectoryForCurrentUser
