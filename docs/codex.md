@@ -455,9 +455,12 @@ unavailable (`costUSD: null`). This opt-in CLI mode does not change ordinary cos
   - Native session store: `~/Library/Caches/CodexBar/cost-usage/cost-usage.sqlite`
     for `~/.codex`. Each other Codex home (`CODEX_HOME` or a profile home) gets its own store under
     `cost-usage/codex-homes/<home key>/`, so scanning one home never replaces another home's coverage or
-    pending work. On first use, a home whose roots match the existing shared store takes that store over,
-    so upgrading custom-home users keep their history. Up to 8 home stores are kept; stores for deleted homes
-    and the least recently written ones (counting WAL writes) are pruned when a new home store is created.
+    pending work. Until a home has its own database, a home whose roots match the existing shared store takes
+    that store over, so upgrading custom-home users keep their history; if the shared store is busy, that access
+    uses it in place and the move is retried next time. The app and CLI can share these stores, so pruning
+    goes by age only (newest write to the database, WAL, SHM or marker): a store whose home folder is gone is
+    removed after 7 days untouched, and beyond 8 stores only those untouched for 30 days are removed. Recently
+    used stores are kept even past 8.
   - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v9.json`
     is replaced atomically on macOS and Linux, retaining complete cached scan state across refreshes.
     Version 8 rebuilds once from transcripts to establish source scope and completeness. Enabling the standalone
