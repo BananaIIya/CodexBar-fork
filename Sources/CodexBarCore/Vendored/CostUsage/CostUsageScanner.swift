@@ -5802,7 +5802,9 @@ enum CostUsageScanner {
         options: Options,
         range: CostUsageDayRange) -> CostUsageStoreLoad
     {
-        CostUsageStoreAccess.load(cacheRoot: options.cacheRoot, calendar: range.calendar)
+        CostUsageStoreAccess.load(
+            cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: options),
+            calendar: range.calendar)
     }
 
     final class CodexScanHistoryHydrator {

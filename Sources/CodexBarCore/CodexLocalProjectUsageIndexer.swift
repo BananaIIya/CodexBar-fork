@@ -70,7 +70,7 @@ enum CodexLocalProjectUsageIndexer {
         try checkCancellation?()
 
         var cache = CostUsageStoreAccess.readWithoutTokenSnapshots(
-            cacheRoot: scannerOptions.cacheRoot,
+            cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: scannerOptions),
             calendar: scannerOptions.calendar)
         let expectedRoots = CostUsageScanner.codexRootsFingerprint(options: scannerOptions)
         // Sidecar rehydration stamps the requested roots, so validate the scanner cache before importing it.
@@ -168,7 +168,7 @@ enum CodexLocalProjectUsageIndexer {
             until: until,
             calendar: options.calendar)
         let cache = cacheOverride ?? CostUsageStoreAccess.readWithoutTokenSnapshots(
-            cacheRoot: options.cacheRoot,
+            cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: options),
             calendar: options.calendar)
         let catalog = catalogOverride ?? CodexThreadCatalogReader.load(options: options)
         let pricing = PricingContext(

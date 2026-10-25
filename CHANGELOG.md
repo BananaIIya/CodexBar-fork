@@ -2,6 +2,10 @@
 
 ## 0.81.1 — Unreleased
 
+### Fixed
+
+- Codex: keep cost scan state separate for each Codex home, so scanning one `CODEX_HOME` or profile home no longer resets another home's history coverage and totals (#4770). Thanks @h3x89!
+
 ## 0.81.0 — 2026-10-24
 
 ### Highlights

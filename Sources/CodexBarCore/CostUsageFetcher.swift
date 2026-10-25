@@ -386,7 +386,7 @@ public struct CostUsageFetcher: Sendable {
         let roots = CostUsageScanner.codexSessionsRoots(options: options)
         let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
         let view = CostUsageStoreAccess.readView(
-            cacheRoot: options.cacheRoot,
+            cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: options),
             calendar: options.calendar,
             purpose: .status)
         let requiredRange = historyDays.map { days in
@@ -1110,7 +1110,7 @@ public struct CostUsageFetcher: Sendable {
         let roots = CostUsageScanner.codexSessionsRoots(options: options)
         let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
         // Keep a fallback detail read on the same validated connection.
-        let store = CostUsageStore(cacheRoot: options.cacheRoot)
+        let store = CostUsageStore(cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: options))
         var view = store.syncLoadCodexReadView(calendar: options.calendar, purpose: .status).scoped(to: roots)
         if view.hasPendingScan {
             view = store.syncLoadCodexReadView(calendar: options.calendar, purpose: .activity).scoped(to: roots)
@@ -1323,7 +1323,7 @@ public struct CostUsageFetcher: Sendable {
             let roots = CostUsageScanner.codexSessionsRoots(options: options)
             let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
             let cache = CostUsageStoreAccess.readView(
-                cacheRoot: options.cacheRoot,
+                cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: options),
                 calendar: options.calendar,
                 purpose: .activity).scoped(to: roots)
             guard cache.timeZoneIdentifier == options.calendar.timeZone.identifier,

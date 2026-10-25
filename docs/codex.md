@@ -453,6 +453,10 @@ unavailable (`costUSD: null`). This opt-in CLI mode does not change ordinary cos
     when pi-compatible usage joins the aggregate because the native-only rows would not reconcile with the merged total.
 - Cache:
   - Native session store: `~/Library/Caches/CodexBar/cost-usage/cost-usage.sqlite`
+    for `~/.codex`. Each other Codex home (`CODEX_HOME` or a profile home) gets its own store under
+    `cost-usage/codex-homes/<home key>/`, so scanning one home never replaces another home's coverage or
+    pending work. Up to 8 home stores are kept; stores for deleted homes and the least recently written
+    ones are pruned when a new home store is created.
   - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v9.json`
     is replaced atomically on macOS and Linux, retaining complete cached scan state across refreshes.
     Version 8 rebuilds once from transcripts to establish source scope and completeness. Enabling the standalone
