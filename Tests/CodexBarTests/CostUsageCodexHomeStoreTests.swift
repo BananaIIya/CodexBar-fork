@@ -63,6 +63,45 @@ struct CostUsageCodexHomeStoreTests {
     }
 
     @Test
+    func `custom home session request details load from the per home store`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 8)
+        let home = env.root.appendingPathComponent("home-detail", isDirectory: true)
+        try Self.writeSession(home: home, env: env, day: day, name: "detail.jsonl", tokens: 77, sessionID: "detail")
+
+        try await Self.withProductionDefaults(env: env) {
+            let options = Self.options(Self.unboundedOptions(env: env), home: home)
+            let fresh = try await Self.establish(home: home, now: day, options: options)
+            let freshSession = try #require(fresh.sessions.first)
+            let cached = try #require(await CostUsageFetcher.loadCachedCodexTokenSnapshot(
+                now: day,
+                codexHomePath: home.path,
+                historyDays: 1,
+                allowScopedCodexHome: true,
+                includePiSessions: false,
+                scannerOptions: options))
+            let cachedSession = try #require(cached.sessions.first)
+
+            let homeRoot = try #require(CodexHomeCostStoreScope.cacheRoot(options: options))
+            let homeDatabase = CostUsageStore.databaseURL(cacheRoot: homeRoot)
+            #expect(homeDatabase != CostUsageStore.databaseURL(cacheRoot: env.cacheRoot))
+            let calendar = Calendar.current
+            let start = calendar.startOfDay(for: day)
+            for session in [freshSession, cachedSession] {
+                let source = try #require(session.requestDetailSource)
+                #expect(source.databaseURL == homeDatabase)
+                let turns = try await CostUsageSessionDetailLoader.load(
+                    source: source,
+                    lastActivity: session.lastActivity,
+                    range: start..<start.addingTimeInterval(86400),
+                    timeZone: calendar.timeZone)
+                #expect(turns.compactMap(\.totalTokens).reduce(0, +) == 77)
+            }
+        }
+    }
+
+    @Test
     func `default codex home keeps the shared database file`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
@@ -414,7 +453,8 @@ extension CostUsageCodexHomeStoreTests {
         env: CostUsageTestEnvironment,
         day: Date,
         name: String,
-        tokens: Int) throws
+        tokens: Int,
+        sessionID: String? = nil) throws
     {
         let comps = Calendar.current.dateComponents([.year, .month, .day], from: day)
         let directory = home
@@ -424,7 +464,10 @@ extension CostUsageCodexHomeStoreTests {
             .appendingPathComponent(String(format: "%02d", comps.day ?? 1), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let model = "openai/gpt-5.4"
-        try env.jsonl([
+        let meta: [[String: Any]] = sessionID.map {
+            [["type": "session_meta", "timestamp": env.isoString(for: day), "payload": ["id": $0]]]
+        } ?? []
+        try env.jsonl(meta + [
             ["type": "turn_context", "timestamp": env.isoString(for: day), "payload": ["model": model]],
             [
                 "type": "event_msg",

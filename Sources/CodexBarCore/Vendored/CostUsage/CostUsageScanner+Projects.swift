@@ -18,6 +18,7 @@ extension CostUsageScanner {
         range: CostUsageDayRange,
         modelsDevCatalog: ModelsDevCatalog? = nil,
         modelsDevCacheRoot: URL? = nil,
+        detailStoreCacheRoot: URL? = nil,
         sessionRoots: [URL]? = nil,
         includeBreakdowns: Bool = true,
         includeProjects: Bool = true,
@@ -114,7 +115,7 @@ extension CostUsageScanner {
             }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
-        let databaseURL = CostUsageStore.databaseURL(cacheRoot: modelsDevCacheRoot)
+        let databaseURL = CostUsageStore.databaseURL(cacheRoot: detailStoreCacheRoot ?? modelsDevCacheRoot)
         let sessions = latestSessions.compactMap { id, file -> CostUsageSessionBreakdown? in
             let performanceSamples = Self.codexTurnPerformanceSamples(usage: file.usage, range: range)
             // A turn can complete after midnight with all billed requests on the previous day.
@@ -123,7 +124,8 @@ extension CostUsageScanner {
                 detailSource: CostUsageSessionDetailSource(
                     databaseURL: databaseURL,
                     sessionSource: SessionToolActivitySource(fileURL: URL(fileURLWithPath: file.path), sessionID: id),
-                    parsedBytes: file.usage.parsedBytes),
+                    parsedBytes: file.usage.parsedBytes,
+                    modelsDevCacheRoot: modelsDevCacheRoot),
                 usage: file.usage,
                 report: file.report,
                 projectPathResolver: projectPathResolver,
