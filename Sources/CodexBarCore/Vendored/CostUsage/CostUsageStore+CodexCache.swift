@@ -1528,11 +1528,26 @@ enum CostUsageStoreAccess {
                 return store
             }
         }
+
+        #if DEBUG
+        func remove(cacheRoot: URL?) {
+            let key = CostUsageStore.databaseURL(cacheRoot: cacheRoot).standardizedFileURL.path
+            self.lock.withLock { self.entries.removeAll { $0.path == key } }
+        }
+        #endif
     }
 
     private static let sharedReadStores = SharedStoreRegistry()
     /// Separate stores prevent report reads from superseding an in-flight scanner receipt.
     private static let sharedScanStores = SharedStoreRegistry()
+
+    #if DEBUG
+    /// Lets tests release the process's warm stores for a cache root, as a fresh process would.
+    static func releaseSharedStoresForTesting(cacheRoot: URL?) {
+        self.sharedReadStores.remove(cacheRoot: cacheRoot)
+        self.sharedScanStores.remove(cacheRoot: cacheRoot)
+    }
+    #endif
 
     static func readView(
         cacheRoot: URL?,

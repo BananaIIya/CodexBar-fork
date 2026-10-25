@@ -28,13 +28,33 @@ actor CostUsageStore {
         }
 
         static func shared(for databaseURL: URL) -> StoreSerialExecutor {
+            let key = self.registryKey(for: databaseURL, createDirectories: true)
+            return Self.registryLock.withLock {
+                if let executor = Self.registry[key]?.value { return executor }
+                Self.registry = Self.registry.filter { $0.value.value != nil }
+                let suffix = String(UInt(bitPattern: key.hashValue), radix: 16).suffix(8)
+                let executor = StoreSerialExecutor(label: "com.steipete.codexbar.cost-usage-store.\(suffix)")
+                Self.registry[key] = WeakExecutor(value: executor)
+                return executor
+            }
+        }
+
+        /// Whether a live store in this process still owns the database's executor.
+        static func isLive(for databaseURL: URL) -> Bool {
+            let key = self.registryKey(for: databaseURL, createDirectories: false)
+            return Self.registryLock.withLock { Self.registry[key]?.value != nil }
+        }
+
+        private static func registryKey(for databaseURL: URL, createDirectories: Bool) -> String {
             var location = databaseURL
             var visited: Set<String> = []
             while true {
                 let directory = location.deletingLastPathComponent()
                 // Resolve existing parents and follow file links even when their target is missing.
                 // Open retries directory creation and reports errors through the normal store path.
-                try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                if createDirectories {
+                    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                }
                 location = directory.resolvingSymlinksInPath().standardizedFileURL
                     .appendingPathComponent(location.lastPathComponent)
                 guard visited.insert(location.path).inserted,
@@ -44,17 +64,9 @@ actor CostUsageStore {
             }
             let caseSensitive = try? location.deletingLastPathComponent()
                 .resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames
-            let key = caseSensitive == false
+            return caseSensitive == false
                 ? location.path.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
                 : location.path
-            return Self.registryLock.withLock {
-                if let executor = Self.registry[key]?.value { return executor }
-                Self.registry = Self.registry.filter { $0.value.value != nil }
-                let suffix = String(UInt(bitPattern: key.hashValue), radix: 16).suffix(8)
-                let executor = StoreSerialExecutor(label: "com.steipete.codexbar.cost-usage-store.\(suffix)")
-                Self.registry[key] = WeakExecutor(value: executor)
-                return executor
-            }
         }
 
         init(label: String) {
@@ -278,6 +290,31 @@ extension CostUsageStore {
             return try withoutActuallyEscaping(operation) { (operation: @escaping Isolated) throws -> T in
                 try unsafeBitCast(operation, to: Unisolated.self)(self)
             }
+        }
+    }
+
+    /// Whether a store in this process may still hold a connection to this database.
+    static func isOpenInProcess(databaseURL: URL) -> Bool {
+        StoreSerialExecutor.isLive(for: databaseURL)
+    }
+
+    /// Copies every WAL frame into the main file, empties the WAL, and closes the connection.
+    /// Returns false when the checkpoint could not finish, for example while another reader is active.
+    nonisolated func syncCheckpointAndClose() -> Bool {
+        self.syncWithStoreIsolation { store in
+            store.retainedCodexBaseline = nil
+            store.retainedCodexRead = nil
+            store.retainedCodexScan = nil
+            defer {
+                store.connection?.close()
+                store.connection = nil
+            }
+            guard let database = store.connection?.handle, sqlite3_get_autocommit(database) != 0 else { return false }
+            var logFrames: Int32 = -1
+            var checkpointedFrames: Int32 = -1
+            let result = sqlite3_wal_checkpoint_v2(
+                database, nil, SQLITE_CHECKPOINT_TRUNCATE, &logFrames, &checkpointedFrames)
+            return result == SQLITE_OK && logFrames == 0
         }
     }
 
