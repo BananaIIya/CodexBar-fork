@@ -2,6 +2,10 @@
 
 ## 0.81.1 — Unreleased
 
+### Added
+
+- Plugins: allow detail progress bars to display native pace markers, respecting Show pace (#4776). Thanks @KLIEBHAN!
+
 ### Fixed
 
 - Codex: keep cost scan state separate for each Codex home, so scanning one `CODEX_HOME` or profile home no longer resets another home's history coverage and totals (#4770). Thanks @h3x89!
