@@ -16,11 +16,5 @@ struct CostUsageStoreTestHooks: Sendable {
     var codexBaselineReadCheckpoint: (databaseURL: URL, checkpoint: @Sendable () throws -> Void)?
     var codexTokenHydrationCheckpoint: (databaseURL: URL, checkpoint: @Sendable () throws -> Void)?
     var codexCacheReadCheckpoint: (databaseURL: URL, checkpoint: @Sendable () throws -> Void)?
-    /// Treats this cache root and Codex sessions root as the production defaults.
-    var codexHomeStoreDefaults: CodexHomeCostStoreScope.Defaults?
-    /// Fails the shared-store copy into a new Codex home store.
-    var codexHomeAdoptionCopyFailure = false
-    /// Treats this root as the production models.dev pricing cache root.
-    var modelsDevDefaultCacheRoot: URL?
 }
 #endif

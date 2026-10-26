@@ -47,6 +47,7 @@ extension CostUsageStore {
     static func readDecodedCodexUsageRows(
         _ database: OpaquePointer,
         files: [CostUsageStoreFile],
+        home: String,
         recorder: CostUsageStoreReadWorkRecorder?) throws -> DecodedCodexUsageRows
     {
         var decoded = DecodedCodexUsageRows()
@@ -60,7 +61,7 @@ extension CostUsageStore {
         })
         var decodeAttempts = 0
         defer { recorder?.recordUsageRowDecodes(count: decodeAttempts) }
-        try self.forEachUsageRow(database, path: nil, recorder: recorder) { stored in
+        try self.forEachUsageRow(database, path: nil, home: home, recorder: recorder) { stored in
             decoded.rowCounts[stored.path, default: 0] += 1
             guard readablePaths.contains(stored.path) else { return }
             decodeAttempts += 1
@@ -100,24 +101,35 @@ extension CostUsageStore {
             let (snapshot, usageRows, retryPresence) = try Self.inReadTransaction(database) {
                 let snapshot = try CostUsageStoreSnapshot(
                     metadata: Self.readSingleton(
-                        CostUsageStoreMetadata.self, database: database, table: "scan_metadata") ?? .empty,
-                    files: Self.readFiles(database, recorder: recorder),
+                        CostUsageStoreMetadata.self, database: database, table: "scan_metadata", home: self.home) ??
+                        .empty,
+                    files: Self.readFiles(database, home: self.home, recorder: recorder),
                     tokenSnapshots: [],
                     usageRows: [],
-                    fileDayAggregates: purpose != .status ? Self.readFileDayAggregates(database, path: nil) : [],
+                    fileDayAggregates: purpose != .status ? Self.readFileDayAggregates(
+                        database,
+                        path: nil,
+                        home: self.home) : [],
                     dayAggregates: purpose != .status
-                        ? Self.readDayAggregates(database, sinceDay: nil, untilDay: nil) : [],
-                    forkLineage: Self.readForkLineage(database, path: nil),
+                        ? Self.readDayAggregates(database, home: self.home, sinceDay: nil, untilDay: nil) : [],
+                    forkLineage: Self.readForkLineage(database, path: nil, home: self.home),
                     bufferedLines: [],
                     discoveryState: Self.readSingleton(
-                        CostUsageStoreDiscoveryState.self, database: database, table: "discovery_state"),
+                        CostUsageStoreDiscoveryState.self,
+                        database: database,
+                        table: "discovery_state",
+                        home: self.home),
                     lookbackState: Self.readSingleton(
-                        CostUsageStoreLookbackState.self, database: database, table: "lookback_state"),
+                        CostUsageStoreLookbackState.self, database: database, table: "lookback_state", home: self.home),
                     accumulators: [])
                 let usageRows = purpose == .report
-                    ? try Self.readDecodedCodexUsageRows(database, files: snapshot.files, recorder: recorder)
+                    ? try Self.readDecodedCodexUsageRows(
+                        database,
+                        files: snapshot.files,
+                        home: self.home,
+                        recorder: recorder)
                     : nil
-                let retryPresence = try Self.readRetryBufferPresence(database, recorder: recorder)
+                let retryPresence = try Self.readRetryBufferPresence(database, home: self.home, recorder: recorder)
                 #if DEBUG
                 try self.runCodexReadCheckpointForTesting()
                 #endif
@@ -1509,74 +1521,77 @@ struct CostUsageStoreLoad: @unchecked Sendable {
 enum CostUsageStoreAccess {
     private final class SharedStoreRegistry: @unchecked Sendable {
         private let lock = NSLock()
-        private var entries: [(path: String, store: CostUsageStore)] = []
+        private var entries: [(path: String, home: String, store: CostUsageStore)] = []
         /// The app normally owns one cache root. Keep a small bound for managed/test roots so
         /// decoded scan/read state and idle SQLite connections cannot grow with every path seen.
         private let capacity = 4
 
-        func store(cacheRoot: URL?) -> CostUsageStore {
-            let candidate = CostUsageStore(cacheRoot: cacheRoot)
+        func store(cacheRoot: URL?, home: String) -> CostUsageStore {
+            let candidate = CostUsageStore(cacheRoot: cacheRoot, home: home)
             let key = candidate.databaseURL.standardizedFileURL.path
             return self.lock.withLock {
-                let store: CostUsageStore = if let index = self.entries.firstIndex(where: { $0.path == key }) {
+                let store: CostUsageStore = if let index = self.entries
+                    .firstIndex(where: { $0.path == key && $0.home == home })
+                {
                     self.entries.remove(at: index).store
                 } else {
                     candidate
                 }
-                self.entries.append((key, store))
+                self.entries.append((key, home, store))
                 if self.entries.count > self.capacity { self.entries.removeFirst() }
                 return store
             }
         }
-
-        #if DEBUG
-        func remove(cacheRoot: URL?) {
-            let key = CostUsageStore.databaseURL(cacheRoot: cacheRoot).standardizedFileURL.path
-            self.lock.withLock { self.entries.removeAll { $0.path == key } }
-        }
-        #endif
     }
 
     private static let sharedReadStores = SharedStoreRegistry()
     /// Separate stores prevent report reads from superseding an in-flight scanner receipt.
     private static let sharedScanStores = SharedStoreRegistry()
 
-    #if DEBUG
-    /// Lets tests release the process's warm stores for a cache root, as a fresh process would.
-    static func releaseSharedStoresForTesting(cacheRoot: URL?) {
-        self.sharedReadStores.remove(cacheRoot: cacheRoot)
-        self.sharedScanStores.remove(cacheRoot: cacheRoot)
-    }
-    #endif
-
     static func readView(
         cacheRoot: URL?,
+        home: String = CodexHomeCostStoreScope.key(),
         calendar: Calendar,
         purpose: CostUsageStoreReadPurpose) -> CostUsageStoreReadView
     {
-        self.sharedReadStores.store(cacheRoot: cacheRoot)
+        self.sharedReadStores.store(cacheRoot: cacheRoot, home: home)
             .syncLoadCodexReadView(calendar: calendar, purpose: purpose)
     }
 
-    static func load(cacheRoot: URL?, calendar: Calendar) -> CostUsageStoreLoad {
+    static func load(
+        cacheRoot: URL?,
+        home: String = CodexHomeCostStoreScope.key(),
+        calendar: Calendar) -> CostUsageStoreLoad
+    {
         #if DEBUG
         if let store = CostUsageStoreTestHooks.current.scanStoreOverride,
-           store.databaseURL == CostUsageStore(cacheRoot: cacheRoot).databaseURL
+           store.databaseURL == CostUsageStore.databaseURL(cacheRoot: cacheRoot),
+           store.home == home
         {
             return store.syncLoadCodexScan(calendar: calendar)
         }
         #endif
-        return self.sharedScanStores.store(cacheRoot: cacheRoot).syncLoadCodexScan(calendar: calendar)
+        return self.sharedScanStores.store(cacheRoot: cacheRoot, home: home).syncLoadCodexScan(calendar: calendar)
     }
 
-    static func read(cacheRoot: URL?, calendar: Calendar = .current) -> CostUsageCache {
-        CostUsageStore(cacheRoot: cacheRoot).syncLoadCodexCache(calendar: calendar)
+    static func read(
+        cacheRoot: URL?,
+        home: String = CodexHomeCostStoreScope.key(),
+        calendar: Calendar = .current) -> CostUsageCache
+    {
+        CostUsageStore(cacheRoot: cacheRoot, home: home).syncLoadCodexCache(calendar: calendar)
     }
 
     /// Cache read for callers whose work is row pricing and daily aggregates. Skipping the token
     /// snapshot table keeps large local histories from being materialized in full.
-    static func readWithoutTokenSnapshots(cacheRoot: URL?, calendar: Calendar = .current) -> CostUsageCache {
-        CostUsageStore(cacheRoot: cacheRoot).syncLoadCodexCache(calendar: calendar, loadTokenSnapshots: false)
+    static func readWithoutTokenSnapshots(
+        cacheRoot: URL?,
+        home: String = CodexHomeCostStoreScope.key(),
+        calendar: Calendar = .current) -> CostUsageCache
+    {
+        CostUsageStore(cacheRoot: cacheRoot, home: home).syncLoadCodexCache(
+            calendar: calendar,
+            loadTokenSnapshots: false)
     }
 
     /// Test and maintenance mutation seam for metadata-only edits. Scanner writes should keep
@@ -1584,10 +1599,11 @@ enum CostUsageStoreAccess {
     @discardableResult
     static func replace(
         cacheRoot: URL?,
+        home: String = CodexHomeCostStoreScope.key(),
         cache: CostUsageCache,
         calendar: Calendar = .current) -> CostUsageStoreBudgetResult
     {
-        let loaded = self.load(cacheRoot: cacheRoot, calendar: calendar)
+        let loaded = self.load(cacheRoot: cacheRoot, home: home, calendar: calendar)
         defer { loaded.release() }
         let since = cache.scanSinceKey ?? "0000-01-01"
         let until = cache.scanUntilKey ?? "9999-12-31"

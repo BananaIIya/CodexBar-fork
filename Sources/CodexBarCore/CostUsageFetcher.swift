@@ -386,7 +386,8 @@ public struct CostUsageFetcher: Sendable {
         let roots = CostUsageScanner.codexSessionsRoots(options: options)
         let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
         let view = CostUsageStoreAccess.readView(
-            cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: options),
+            cacheRoot: options.cacheRoot,
+            home: CodexHomeCostStoreScope.key(options: options),
             calendar: options.calendar,
             purpose: .status)
         let requiredRange = historyDays.map { days in
@@ -927,9 +928,7 @@ public struct CostUsageFetcher: Sendable {
                 let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options.scanOptions)
                 let range = CostUsageScanner.CostUsageDayRange(
                     since: since, until: now, calendar: options.scanOptions.calendar)
-                // Resolve once so the summary read and the request-detail handle share one store.
-                let storeRoot = CodexHomeCostStoreScope.cacheRoot(options: options.scanOptions)
-                let view = Self.codexReportView(options: options.scanOptions, storeRoot: storeRoot, range: range)
+                let view = Self.codexReportView(options: options.scanOptions, range: range)
                 historyCoverageIsEstablished = view.historyCoverageIsEstablished(
                     range: range,
                     rootsFingerprint: rootsFingerprint)
@@ -940,11 +939,7 @@ public struct CostUsageFetcher: Sendable {
                 {
                     staleSnapshotUpdatedAt = previous.updatedAt
                 } else {
-                    let reports = view.reports(
-                        range: range,
-                        cacheRoot: options.scanOptions.cacheRoot,
-                        detailStoreCacheRoot: storeRoot,
-                        roots: roots)
+                    let reports = view.reports(range: range, cacheRoot: options.scanOptions.cacheRoot, roots: roots)
                     daily = reports.daily
                     (projects, sessions) = Self.codexBreakdownsWithMetadata(
                         reports.sessions,
@@ -1111,13 +1106,14 @@ public struct CostUsageFetcher: Sendable {
 
     private static func codexReportView(
         options: CostUsageScanner.Options,
-        storeRoot: URL?,
         range: CostUsageScanner.CostUsageDayRange) -> CostUsageStoreReadView
     {
         let roots = CostUsageScanner.codexSessionsRoots(options: options)
         let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
         // Keep a fallback detail read on the same validated connection.
-        let store = CostUsageStore(cacheRoot: storeRoot)
+        let store = CostUsageStore(
+            cacheRoot: options.cacheRoot,
+            home: CodexHomeCostStoreScope.key(options: options))
         var view = store.syncLoadCodexReadView(calendar: options.calendar, purpose: .status).scoped(to: roots)
         if view.hasPendingScan {
             view = store.syncLoadCodexReadView(calendar: options.calendar, purpose: .activity).scoped(to: roots)
@@ -1330,7 +1326,8 @@ public struct CostUsageFetcher: Sendable {
             let roots = CostUsageScanner.codexSessionsRoots(options: options)
             let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
             let cache = CostUsageStoreAccess.readView(
-                cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: options),
+                cacheRoot: options.cacheRoot,
+                home: CodexHomeCostStoreScope.key(options: options),
                 calendar: options.calendar,
                 purpose: .activity).scoped(to: roots)
             guard cache.timeZoneIdentifier == options.calendar.timeZone.identifier,
@@ -1413,8 +1410,7 @@ public struct CostUsageFetcher: Sendable {
                 calendar: options.calendar)
             let roots = CostUsageScanner.codexSessionsRoots(options: options)
             let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
-            let storeRoot = CodexHomeCostStoreScope.cacheRoot(options: options)
-            let cache = Self.codexReportView(options: options, storeRoot: storeRoot, range: range)
+            let cache = Self.codexReportView(options: options, range: range)
             var reports: [CostUsageDailyReport] = []
             var projects: [CostUsageProjectBreakdown] = []
             var sessions: [CostUsageSessionBreakdown] = []
@@ -1448,7 +1444,6 @@ public struct CostUsageFetcher: Sendable {
                 let projections = cache.reports(
                     range: range,
                     cacheRoot: options.cacheRoot,
-                    detailStoreCacheRoot: storeRoot,
                     roots: roots,
                     includeBreakdowns: includeProjectAndSessionBreakdowns,
                     includeProjects: cache.projectMetadataVersion == CostUsageScanner.codexProjectMetadataVersion)

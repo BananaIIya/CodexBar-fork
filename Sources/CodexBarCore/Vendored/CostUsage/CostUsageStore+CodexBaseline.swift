@@ -155,10 +155,15 @@ extension CostUsageStore {
         let recorder = self.scopedReadWorkRecorderForTesting
         let snapshot = try Self.readSnapshot(
             database,
+            home: self.home,
             loadTokenSnapshots: loadTokenSnapshots,
             loadUsageRows: false,
             recorder: recorder)
-        let rows = try Self.readDecodedCodexUsageRows(database, files: snapshot.files, recorder: recorder)
+        let rows = try Self.readDecodedCodexUsageRows(
+            database,
+            files: snapshot.files,
+            home: self.home,
+            recorder: recorder)
         return (snapshot, rows)
     }
 

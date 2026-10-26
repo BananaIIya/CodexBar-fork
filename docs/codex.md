@@ -372,6 +372,11 @@ there is no `auth.json`. Local cost estimates do not require account identity or
 Managed and profile homes retain their separate history scopes; a home already represented by a visible account
 is not added again as a local source. This does not read the CLI's keyring credentials.
 
+Each Codex home keeps its scan progress, discovery, coverage, and daily totals in the existing shared SQLite store.
+Switching homes does not reset another home's completed history or pending work, and retention only prunes the
+selected home's rows. Existing singleton state is migrated in place to its recorded home (or the default home when
+no root was recorded), retaining file IDs and history without creating per-home database copies.
+
 The static musl Linux CLI reserves an 8 MiB thread stack so scanning non-empty Codex session logs
 does not exhaust musl's smaller default stack. The scanner and cache format stay shared with glibc and macOS.
 
@@ -453,14 +458,6 @@ unavailable (`costUSD: null`). This opt-in CLI mode does not change ordinary cos
     when pi-compatible usage joins the aggregate because the native-only rows would not reconcile with the merged total.
 - Cache:
   - Native session store: `~/Library/Caches/CodexBar/cost-usage/cost-usage.sqlite`
-    for `~/.codex`. Each other Codex home (`CODEX_HOME` or a profile home) gets its own store under
-    `cost-usage/codex-homes/<home key>/`, so scanning one home never replaces another home's coverage or
-    pending work. Until a home has its own database, a home whose roots match the existing shared store gets a
-    copy of it (SQLite online backup), so upgrading custom-home users keep their history; the shared store itself
-    is never moved or deleted, and a custom home never reads or writes it in place. If ownership cannot be read or
-    the copy fails, the home store starts empty and catches up from session files once. Home stores are removed automatically only when their home folder is gone and they
-    have been untouched (database, WAL and SHM) for 7 days, so growth is bounded by your existing Codex homes.
-    Clearing the cost cache removes them all.
   - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v9.json`
     is replaced atomically on macOS and Linux, retaining complete cached scan state across refreshes.
     Version 8 rebuilds once from transcripts to establish source scope and completeness. Enabling the standalone

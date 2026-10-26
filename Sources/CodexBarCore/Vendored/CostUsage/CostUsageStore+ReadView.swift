@@ -153,7 +153,6 @@ struct CostUsageStoreReadView: Sendable {
     func reports(
         range: CostUsageScanner.CostUsageDayRange,
         cacheRoot: URL?,
-        detailStoreCacheRoot: URL? = nil,
         roots: [URL],
         includeBreakdowns: Bool = true,
         includeProjects: Bool = true)
@@ -163,7 +162,6 @@ struct CostUsageStoreReadView: Sendable {
             cache: self.cache,
             range: range,
             modelsDevCacheRoot: cacheRoot,
-            detailStoreCacheRoot: detailStoreCacheRoot,
             sessionRoots: roots,
             includeBreakdowns: includeBreakdowns,
             includeProjects: includeProjects)

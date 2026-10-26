@@ -5803,7 +5803,8 @@ enum CostUsageScanner {
         range: CostUsageDayRange) -> CostUsageStoreLoad
     {
         CostUsageStoreAccess.load(
-            cacheRoot: CodexHomeCostStoreScope.cacheRoot(options: options),
+            cacheRoot: options.cacheRoot,
+            home: CodexHomeCostStoreScope.key(options: options),
             calendar: range.calendar)
     }
 

@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- Codex: keep cost scan state separate for each Codex home, so scanning one `CODEX_HOME` or profile home no longer resets another home's history coverage and totals (#4770). Thanks @h3x89!
+- Codex: preserve established local cost coverage and catch-up progress when switching Codex homes (#4770, #4773). Thanks @harjothkhara!
 
 ## 0.81.0 — 2026-10-24
 

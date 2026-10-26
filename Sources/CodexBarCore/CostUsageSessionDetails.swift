@@ -11,29 +11,11 @@ public struct CostUsageSessionDetailSource: Sendable, Equatable, Hashable {
     public let databaseURL: URL
     public let sessionSource: SessionToolActivitySource
     public let parsedBytes: Int64?
-    /// Resolved pricing cache root. Never derived from the database path, which may be a per-home store.
-    public let modelsDevCacheRoot: URL
 
-    /// Released 3-argument shape. Derives the pricing root from the database path as before; new callers should
-    /// use the explicit initializer.
     public init(databaseURL: URL, sessionSource: SessionToolActivitySource, parsedBytes: Int64?) {
-        self.init(
-            databaseURL: databaseURL,
-            sessionSource: sessionSource,
-            parsedBytes: parsedBytes,
-            modelsDevCacheRoot: databaseURL.deletingLastPathComponent().deletingLastPathComponent())
-    }
-
-    public init(
-        databaseURL: URL,
-        sessionSource: SessionToolActivitySource,
-        parsedBytes: Int64?,
-        modelsDevCacheRoot: URL)
-    {
         self.databaseURL = databaseURL
         self.sessionSource = sessionSource
         self.parsedBytes = parsedBytes
-        self.modelsDevCacheRoot = modelsDevCacheRoot
     }
 }
 
@@ -106,11 +88,12 @@ public enum CostUsageSessionDetailLoader {
             until: range.upperBound.addingTimeInterval(-0.001),
             calendar: calendar)
         var turns = CostUsageScanner.SessionTurns()
+        let cacheRoot = source.databaseURL.deletingLastPathComponent().deletingLastPathComponent()
         let report = CostUsageScanner.buildCodexReportFromCache(
             cache: cache,
             range: days,
             modelsDevCatalog: catalog,
-            modelsDevCacheRoot: source.modelsDevCacheRoot,
+            modelsDevCacheRoot: cacheRoot,
             onPricedRow: { row, cost, complete in turns.add(row, cost: cost, isComplete: complete) })
         try checkCancellation()
         return turns.build(report: report)
@@ -179,6 +162,7 @@ public enum CostUsageSessionDetailLoader {
             includesRequestLedgerState: false)
         cache.codexResolvedPriorityTurns = try self.readPriorityEvidence(
             database,
+            fileID: fileID,
             turnIDs: Set(rows.compactMap(\.turnID)),
             maximumBytes: limits.pricingMetadataBytes)
         return cache
@@ -226,12 +210,17 @@ public enum CostUsageSessionDetailLoader {
 
     private static func readPriorityEvidence(
         _ database: OpaquePointer,
+        fileID: Int64,
         turnIDs: Set<String>,
         maximumBytes: Int) throws -> [String: CostUsageScanner.CodexPriorityTurnMetadata]
     {
         guard !turnIDs.isEmpty else { return [:] }
-        let preflight = try CostUsageStore.prepare(database, "SELECT length(payload) FROM scan_metadata WHERE id = 1")
+        let preflight = try CostUsageStore.prepare(
+            database,
+            "SELECT length(payload) FROM scan_metadata WHERE id = 1 " +
+                "AND home = (SELECT home FROM files WHERE id = ?)")
         defer { sqlite3_finalize(preflight) }
+        sqlite3_bind_int64(preflight, 1, fileID)
         let status = sqlite3_step(preflight)
         if status == SQLITE_DONE { return [:] }
         guard status == SQLITE_ROW else { throw CostUsageSessionDetailError.unavailable }
@@ -240,8 +229,12 @@ public enum CostUsageSessionDetailLoader {
         }
         // Bound the serialized envelope before copying it. Decode only the selected turn keys,
         // never the historical cursor, inventory, previous report, or full resolved-turn dictionary.
-        let statement = try CostUsageStore.prepare(database, "SELECT payload FROM scan_metadata WHERE id = 1")
+        let statement = try CostUsageStore.prepare(
+            database,
+            "SELECT payload FROM scan_metadata WHERE id = 1 " +
+                "AND home = (SELECT home FROM files WHERE id = ?)")
         defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, fileID)
         guard sqlite3_step(statement) == SQLITE_ROW, let payload = CostUsageStore.columnData(statement, at: 0)
         else { throw CostUsageSessionDetailError.unavailable }
         let decoder = JSONDecoder()
