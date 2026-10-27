@@ -1,6 +1,11 @@
 import Foundation
 
 extension CostUsageStore {
+    struct DecodedCodexUsageRows {
+        var rowsByPath: [String: [CostUsageScanner.CodexUsageRow]] = [:]
+        var rowCounts: [String: Int] = [:]
+    }
+
     /// Only the actor can resolve this receipt. It carries no decoded state or SQLite handle.
     final class CodexBaselineReceipt: Sendable {
         fileprivate let id = UUID()
@@ -62,6 +67,7 @@ extension CostUsageStore {
         var persistence: CodexPersistenceState
         var stamp: DatabaseStamp
         var purpose: CostUsageStoreReadPurpose
+        var source: OpenCodeLocalHistoryAdapter.StoredSummary?
     }
 
     func loadCodexScan(calendar: Calendar) -> CostUsageStoreLoad {
@@ -158,6 +164,7 @@ extension CostUsageStore {
             home: self.home,
             loadTokenSnapshots: loadTokenSnapshots,
             loadUsageRows: false,
+            nativeOnly: true,
             recorder: recorder)
         let rows = try Self.readDecodedCodexUsageRows(
             database,

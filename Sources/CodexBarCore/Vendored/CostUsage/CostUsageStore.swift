@@ -122,7 +122,8 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
-        "4e1358d00a4a47b5", // Home-scoped storage preserves native rows and scan checkpoints.
+        "e5909f60274b2c47", // Home scoping preserves the released rows and scan checkpoints.
+        "4e1358d00a4a47b5", // Optional source ownership preserves existing native Codex rows and checkpoints.
         "54a95e8fe7bd6ee9", // Validating inspection checkpoints leaves persisted rows and scan progress unchanged.
         "455876ace937d42a", // Selected-session detail reads leave current-main native rows and checkpoints unchanged.
         "4feea9e203d85529", // Replacing eager inspection with bounded reads preserves saved rows and checkpoints.
@@ -350,10 +351,11 @@ extension CostUsageStore {
 
     nonisolated func syncLoadCodexReadView(
         calendar: Calendar,
-        purpose: CostUsageStoreReadPurpose) -> CostUsageStoreReadView
+        purpose: CostUsageStoreReadPurpose,
+        sourceScope: OpenCodeLocalHistoryAdapter.ReadScope? = nil) -> CostUsageStoreReadView
     {
         self.syncWithStoreIsolation { store in
-            store.loadCodexReadView(calendar: calendar, purpose: purpose)
+            store.loadCodexReadView(calendar: calendar, purpose: purpose, sourceScope: sourceScope)
         }
     }
 

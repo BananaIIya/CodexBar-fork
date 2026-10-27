@@ -954,7 +954,8 @@ extension CostUsageStoreTests {
 
 extension CostUsageStoreTests {
     private static let testedPredecessorParserHashes = [
-        "4e1358d00a4a47b5", // Current main before home-scoped scan state.
+        "e5909f60274b2c47", // Home scoping preserves the released rows and scan checkpoints.
+        "4e1358d00a4a47b5", // Current main before the optional local-history source.
         "54a95e8fe7bd6ee9", // Selected-session inspection before checkpoint validation.
         "455876ace937d42a", // Current main before selected-session detail reads.
         "4feea9e203d85529", // Previous inspector build; request details were never persisted.
