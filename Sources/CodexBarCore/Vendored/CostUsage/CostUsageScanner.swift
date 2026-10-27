@@ -2265,6 +2265,30 @@ enum CostUsageScanner {
         return [root]
     }
 
+    /// Paged discovery skips the missing-file cleanup that normally removes a plain row after Codex
+    /// archives it. Once the corresponding mirror has been scanned, drop the superseded plain row so
+    /// the same rollout cannot contribute through both paths.
+    private static func dropCodexPlainRowsSupersededByScannedArchives(
+        cache: inout CostUsageCache,
+        inventory: CodexArchivedRolloutMirror.Inventory,
+        processedPaths: Set<String>)
+    {
+        let processedPathKeys = Set(processedPaths.map { Self.codexPathKey(URL(fileURLWithPath: $0)) })
+        for root in inventory.roots {
+            for archive in root.archives {
+                guard processedPathKeys.contains(Self.codexPathKey(archive.mirrorURL)) else { continue }
+                let plainURL = URL(fileURLWithPath: String(archive.url.path.dropLast(".zst".count)))
+                let plainPathKey = Self.codexPathKey(plainURL)
+                guard let staleKey = cache.files.keys.first(where: {
+                    Self.codexPathKey(URL(fileURLWithPath: $0)) == plainPathKey
+                }), let stale = cache.files[staleKey]
+                else { continue }
+                Self.applyFileDays(cache: &cache, fileDays: stale.days, sign: -1)
+                cache.files.removeValue(forKey: staleKey)
+            }
+        }
+    }
+
     /// Parent session ids of forks whose baseline is still missing. Archived parents are decoded on demand,
     /// outside the report window, so these forks can settle like forks with older plain parents.
     static func codexMissingForkParentIds(cache: CostUsageCache) -> Set<String> {
@@ -6385,6 +6409,10 @@ enum CostUsageScanner {
                 context: scanContext,
                 cache: &cache,
                 inheritedResolver: inheritedResolver)
+            Self.dropCodexPlainRowsSupersededByScannedArchives(
+                cache: &cache,
+                inventory: archivedRollouts,
+                processedPaths: scanResult.processedPaths)
             filePathsInScan.formUnion(scanResult.scannedPaths.map {
                 Self.codexPathKey(URL(fileURLWithPath: $0))
             })
