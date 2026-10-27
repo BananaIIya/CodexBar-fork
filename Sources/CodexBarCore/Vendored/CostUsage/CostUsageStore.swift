@@ -122,6 +122,7 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
+        "2d6e5ef6073dc99b", // Atomic mirror publication changes no parsed rows or checkpoints.
         "a47b70abaf8ad86c", // 0.77.0 rows and checkpoints are unchanged; archived-rollout mirrors only add scan roots.
         "3f88178bf03ad704", // Exact byte-marker searches preserve native rows, checkpoints, and reports.
         "fc698834d6329beb", // Opt-in request observation defaults to nil; saved rows and cursors are unchanged.

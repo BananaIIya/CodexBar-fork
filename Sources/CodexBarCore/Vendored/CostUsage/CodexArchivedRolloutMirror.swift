@@ -813,11 +813,16 @@ enum CodexArchivedRolloutMirror {
         // Another process pruned the slice (its archive changed); retry next refresh instead of failing.
         guard fileManager.fileExists(atPath: sliceURL.path) else { throw DecodeError.sliceUnavailable }
         try fileManager.setAttributes([.modificationDate: archive.modified], ofItemAtPath: sliceURL.path)
-        if fileManager.fileExists(atPath: archive.mirrorURL.path) {
-            // The default keeps the old mirror's permissions; the slice's owner-only mode must win.
-            _ = try fileManager.replaceItemAt(archive.mirrorURL, withItemAt: sliceURL, options: .usingNewMetadataOnly)
-        } else {
-            try fileManager.moveItem(at: sliceURL, to: archive.mirrorURL)
+        // The slice is beside the mirror: rename publishes it atomically and preserves its private mode.
+        // Foundation's replaceItemAt can remove the destination and throw on Linux.
+        let renamed = sliceURL.path.withCString { source in
+            archive.mirrorURL.path.withCString { destination in rename(source, destination) }
+        }
+        guard renamed == 0 else {
+            throw NSError(
+                domain: NSPOSIXErrorDomain,
+                code: Int(errno),
+                userInfo: [NSFilePathErrorKey: archive.mirrorURL.path])
         }
     }
 
