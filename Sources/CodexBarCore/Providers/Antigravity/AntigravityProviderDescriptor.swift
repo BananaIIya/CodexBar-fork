@@ -66,7 +66,6 @@ public enum AntigravityProviderDescriptor {
                 historyTitleStyle: .compact,
                 hintPlacement: .beforeRequestHistory,
                 chartEstimateDisclaimer: .localized(self.estimateHintKey),
-                preservesCalendarDaysInCharts: true,
                 presentation: .costAndTokens),
             pace: ProviderPaceCapability(sessionPaceWindowRule: .windowDuration(minutes: 300)),
             history: .alwaysTracked,
@@ -740,9 +739,10 @@ struct AntigravityCLIHTTPSFetchStrategy: ProviderFetchStrategy {
         }
     }
 
-    private static func childEnvironment(_ environment: [String: String]) -> [String: String] {
+    static func childEnvironment(_ environment: [String: String]) -> [String: String] {
         var environment = environment
         environment.removeValue(forKey: AntigravityOAuthCredentialsStore.environmentCredentialsKey)
+        environment["AGY_CLI_DISABLE_AUTO_UPDATE"] = "true" // agy ignores "1".
         environment["PATH"] = PathBuilder.effectivePATH(
             purposes: [.tty], env: environment, loginPATH: LoginShellPathCache.shared.current)
         return environment

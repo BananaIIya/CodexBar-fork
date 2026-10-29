@@ -63,6 +63,7 @@ enum ProviderImplementationManifest {
         PluginAPIKeyProviderImplementation(spec: BifrostProviderDescriptor.spec),
         PluginAPIKeyProviderImplementation(spec: AixyProviderDescriptor.spec),
         PluginAPIKeyProviderImplementation(spec: DeepgramProviderDescriptor.spec),
+        PluginAPIKeyProviderImplementation(spec: SonioxProviderDescriptor.spec),
         PluginAPIKeyProviderImplementation(spec: PoeProviderDescriptor.spec),
         PluginAPIKeyProviderImplementation(spec: ChutesProviderDescriptor.spec),
         PluginAPIKeyProviderImplementation(spec: NeuralWattProviderDescriptor.spec),
@@ -92,7 +93,7 @@ enum ProviderImplementationManifest {
         FutureAGIProviderImplementation(),
         PluginAPIKeyProviderImplementation(spec: DevPassProviderDescriptor.spec),
         PluginAPIKeyProviderImplementation(spec: AtlasCloudProviderDescriptor.spec),
-        PluginAPIKeyProviderImplementation(spec: VercelProviderDescriptor.spec),
+        VercelProviderImplementation(),
         PluginAPIKeyProviderImplementation(spec: LLMManProviderDescriptor.spec),
         PluginAPIKeyProviderImplementation(spec: XKiroProviderDescriptor.spec),
         PluginCookieProviderImplementation(spec: MuseAIProviderDescriptor.spec),
@@ -111,5 +112,8 @@ enum ProviderImplementationManifest {
         PluginCookieProviderImplementation(spec: ParallelProviderDescriptor.spec),
         PluginCookieProviderImplementation(spec: ClaudePlatformProviderDescriptor.spec),
         PluginAPIKeyProviderImplementation(spec: MunitoProviderDescriptor.spec),
+        PluginCookieProviderImplementation(spec: TraeCNProviderDescriptor.spec),
+        PluginAPIKeyProviderImplementation(spec: ChatboxProviderDescriptor.spec),
+        PluginAPIKeyProviderImplementation(spec: AbliterationProviderDescriptor.spec),
     ]
 }

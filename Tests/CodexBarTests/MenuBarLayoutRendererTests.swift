@@ -14,6 +14,70 @@ import Testing
 struct MenuBarLayoutRendererTests {
     let now = Date(timeIntervalSince1970: 1_752_768_000)
 
+    @Test
+    func `window label preference hides percentage prefixes without changing accessibility or cached defaults`() {
+        let renderer = MenuBarLayoutRenderer()
+        let layout = MenuBarLayout(lines: [[
+            .percent(window: .session), .percent(window: .weekly), .percent(window: .scopedWeekly),
+            .percent(window: .automatic), .percent(window: .spend),
+        ]])
+        let visible = renderer.render(layout: layout, data: self.data(), icon: nil, options: self.options())
+        let hidden = renderer.render(
+            layout: layout, data: self.data(), icon: nil, options: self.options(showWindowLabels: false))
+        #expect(visible.attributedTitle.string == "5h 25%\u{2009}W 60%\u{2009}F 80%\u{2009}50%\u{2009}$ 46%")
+        #expect(hidden.attributedTitle.string == "25%\u{2009}60%\u{2009}80%\u{2009}50%\u{2009}$ 46%")
+        #expect(hidden.accessibilityLabel == visible.accessibilityLabel)
+        #expect(hidden.attributedTitle !== visible.attributedTitle)
+        let restored = renderer.render(layout: layout, data: self.data(), icon: nil, options: self.options())
+        #expect(restored.attributedTitle === visible.attributedTitle)
+    }
+
+    @Test
+    func `window label preference handles short unknown and unavailable sessions`() {
+        let renderer = MenuBarLayoutRenderer()
+        let layout = MenuBarLayout(lines: [[.percent(window: .session)]])
+        for minutes in [30, nil] {
+            let data = self.data(sessionWindowMinutes: minutes)
+            let visible = renderer.render(layout: layout, data: data, icon: nil, options: self.options())
+            let hidden = renderer.render(
+                layout: layout,
+                data: data,
+                icon: nil,
+                options: self.options(showUsed: false, showWindowLabels: false))
+            #expect(visible.attributedTitle.string == (minutes == nil ? "S 25%" : "30m 25%"))
+            #expect(hidden.attributedTitle.string == "75%")
+            #expect(hidden.accessibilityLabel == L("%@ %@", L("Session"), "75%"))
+        }
+        let unavailable = renderer.render(
+            layout: layout,
+            data: self.data(omitsSession: true),
+            icon: nil,
+            options: self.options(showWindowLabels: false))
+        #expect(unavailable.attributedTitle.string == "–")
+        #expect(unavailable.accessibilityLabel == L("%@ unavailable", L("Session")))
+    }
+
+    @Test
+    func `window label preference preserves named provider labels and progress bars`() {
+        let renderer = MenuBarLayoutRenderer()
+        let layout = MenuBarLayout(lines: [[
+            .percent(window: .session), .percent(window: .weekly), .lanePercent(lane: .tertiary),
+            .extraPercent(id: "cursor-grok-bot"), .progressBar(window: .session),
+        ]])
+        let data = self.data(provider: .cursor)
+        let visible = renderer.render(layout: layout, data: data, icon: nil, options: self.options())
+        let hidden = renderer.render(
+            layout: layout, data: data, icon: nil, options: self.options(showWindowLabels: false))
+        #expect(hidden.attributedTitle.string == visible.attributedTitle.string)
+        #expect(hidden.accessibilityLabel == visible.accessibilityLabel)
+        let bar = renderer.render(
+            layout: MenuBarLayout(lines: [[.progressBar(window: .session)]]),
+            data: self.data(),
+            icon: nil,
+            options: self.options(showWindowLabels: false))
+        #expect(bar.attributedTitle.string == "5h \u{FFFC}")
+    }
+
     @Test(arguments: [UsageProvider.codex, .claude], [false, true])
     func `provider weekly lane token renders without a window prefix`(provider: UsageProvider, showUsed: Bool) {
         let token = MenuBarLayoutToken.lanePercent(lane: .secondary)
@@ -936,7 +1000,7 @@ struct MenuBarLayoutRendererTests {
         case .regular: stacked ? 9 : NSFont.systemFontSize
         case .large: stacked ? 10 : 14
         }
-        #expect(font == NSFont.systemFont(ofSize: expectedFontSize))
+        #expect(font == NSFont.systemFont(ofSize: expectedFontSize, weight: stacked ? .medium : .regular))
         if stacked {
             let attachment = try #require(output.attributedTitle.attribute(
                 .attachment, at: 0, effectiveRange: nil) as? NSTextAttachment)
@@ -980,7 +1044,8 @@ struct MenuBarLayoutRendererTests {
             .font,
             at: 0,
             effectiveRange: nil) as? NSFont)
-        #expect(font == NSFont.monospacedDigitSystemFont(ofSize: originalFont.pointSize, weight: .regular))
+        #expect(font == NSFont.monospacedDigitSystemFont(
+            ofSize: originalFont.pointSize, weight: stacked ? .medium : .regular))
         #expect(monospaced.attributedTitle !== standard.attributedTitle)
         let digitWidths = (0...9).map { digit in
             NSAttributedString(string: String(digit), attributes: [.font: font]).size().width
@@ -993,6 +1058,21 @@ struct MenuBarLayoutRendererTests {
             icon: nil,
             options: self.options(size: size, forceStackedStyle: stacked))
         #expect(restored.attributedTitle === standard.attributedTitle)
+    }
+
+    @Test
+    func `two line text uses medium weight and reuses its cached title`() throws {
+        let renderer = MenuBarLayoutRenderer()
+        let layout = MenuBarLayout(lines: [[.percent(window: .session)], [.percent(window: .weekly)]])
+        let data = self.data()
+        let options = self.options()
+        let output = renderer.render(layout: layout, data: data, icon: nil, options: options)
+        let title = output.attributedTitle
+        for index in [0, title.length - 1] {
+            let font = try #require(title.attribute(.font, at: index, effectiveRange: nil) as? NSFont)
+            #expect(font == NSFont.systemFont(ofSize: 9, weight: .medium))
+        }
+        #expect(renderer.render(layout: layout, data: data, icon: nil, options: options).attributedTitle === title)
     }
 
     @Test(arguments: MenuBarLayoutSize.allCases)
@@ -1130,6 +1210,24 @@ struct MenuBarLayoutRendererTests {
         #expect(rebuilt.attributedTitle.string == first.attributedTitle.string)
         #expect(icon.sizeReadCount > sizeReadsBeforeClear)
         #expect(cache.count == 1)
+    }
+
+    @Test(arguments: [MenuBarLayoutToken.resetAbsolute, .percent(window: .automatic)])
+    func `unreferenced reset text does not invalidate cached titles`(token: MenuBarLayoutToken) {
+        let renderer = MenuBarLayoutRenderer()
+        let layout = MenuBarLayout(lines: [[token]])
+        let data = self.data()
+        let first = renderer.render(layout: layout, data: data, icon: nil, options: self.options())
+        let later = renderer.render(
+            layout: layout,
+            data: data,
+            icon: nil,
+            options: self.options(now: self.now.addingTimeInterval(60)))
+
+        #expect(first.attributedTitle.string == later.attributedTitle.string)
+        #expect(
+            first.attributedTitle === later.attributedTitle,
+            "An unreferenced countdown must not invalidate the title")
     }
 
     @Test
@@ -1617,6 +1715,7 @@ struct MenuBarLayoutRendererTests {
         let collapsedOffset = try #require(self.baselineOffset(in: leadingHidden.attributedTitle, at: 0))
         let controlOffset = try #require(self.baselineOffset(in: control.attributedTitle, at: 0))
         #expect(collapsedOffset == controlOffset)
+        #expect(leadingHidden.attributedTitle.isEqual(to: control.attributedTitle))
         #expect(leadingHidden.accessibilityLabel == control.accessibilityLabel)
     }
 
@@ -2348,6 +2447,7 @@ struct MenuBarLayoutRendererTests {
         accountLabel: String? = "user@example.com",
         extraRateWindows: [MenuBarLayoutRenderExtra] = [],
         omitsSession: Bool = false,
+        sessionWindowMinutes: Int? = 300,
         weeklyUsedPercent: Double = 60,
         metrics: MenuBarLayoutRenderMetrics? = nil)
         -> MenuBarLayoutRenderData
@@ -2376,7 +2476,7 @@ struct MenuBarLayoutRendererTests {
             extraRateWindows: extraRateWindows,
             session: omitsSession ? nil : MenuBarLayoutRenderWindow(RateWindow(
                 usedPercent: 25,
-                windowMinutes: 300,
+                windowMinutes: sessionWindowMinutes,
                 resetsAt: self.now.addingTimeInterval(60 * 60),
                 resetDescription: nil)),
             weekly: MenuBarLayoutRenderWindow(RateWindow(
@@ -2441,7 +2541,8 @@ struct MenuBarLayoutRendererTests {
         appearanceName: String = "aqua",
         isHighlighted: Bool = false,
         forceStackedStyle: Bool = false,
-        monospacedDigits: Bool = false) -> MenuBarLayoutRenderOptions
+        monospacedDigits: Bool = false,
+        showWindowLabels: Bool = true) -> MenuBarLayoutRenderOptions
     {
         MenuBarLayoutRenderOptions(
             size: size,
@@ -2457,7 +2558,8 @@ struct MenuBarLayoutRendererTests {
             colorPace: colorPace,
             colorByProvider: colorByProvider,
             forceStackedStyle: forceStackedStyle,
-            monospacedDigits: monospacedDigits)
+            monospacedDigits: monospacedDigits,
+            showWindowLabels: showWindowLabels)
     }
 
     private func averageBrightness(
@@ -2530,13 +2632,13 @@ private final class MenuBarLayoutSizeCountingImage: NSImage {
 
 extension MenuBarLayoutRendererTests {
     @Test
-    func `default status item preserves the 0_65_0 width contract`() {
+    func `unlabelled default status item preserves the 0_65_0 width contract`() {
         let icon = NSImage(size: NSSize(width: 16, height: 16))
         let renderer = MenuBarLayoutRenderer()
         let output = renderer.render(
-            layout: .defaultLayout, data: self.data(), icon: icon, options: self.options())
+            layout: .defaultLayout, data: self.data(), icon: icon, options: self.options(showWindowLabels: false))
         #expect(output.attributedTitle.string == "\u{2009}50%")
-        // The renderer and sizing implementation are unchanged from v0.65.0.
+        // Hiding window labels preserves the compact width used by v0.65.0.
         #expect(output.statusItemWidth(gap: .tight) == 49)
         #expect(output.statusItemWidth(gap: .regular) == 56)
         let iconOnly = renderer.render(

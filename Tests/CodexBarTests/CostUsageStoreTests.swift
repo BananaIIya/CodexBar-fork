@@ -955,9 +955,11 @@ extension CostUsageStoreTests {
 
 extension CostUsageStoreTests {
     private static let testedPredecessorParserHashes = [
-        "4e1358d00a4a47b5", // 0.81.0 before archived-rollout mirrors; rows and checkpoints are unchanged.
-        "a47b70abaf8ad86c", // 0.77.0 before archived-rollout mirrors; rows and checkpoints are unchanged.
-        "3f88178bf03ad704", // 0.75.0-0.76.0 before archived-rollout mirrors; rows and checkpoints are unchanged.
+        "e5909f60274b2c47", // 0.82.0 before archived-rollout mirrors; rows and checkpoints are unchanged.
+        "4e1358d00a4a47b5", // Current main before the optional local-history source.
+        "54a95e8fe7bd6ee9", // Selected-session inspection before checkpoint validation.
+        "455876ace937d42a", // Current main before selected-session detail reads.
+        "4feea9e203d85529", // Previous inspector build; request details were never persisted.
         "fc698834d6329beb", // Before opt-in request observation; saved rows and cursors are unchanged.
         "f406dae284de4a55", // Current main before the Auto-review creator-account reparse.
         "379b799bb4b91683", // Current main before on-demand tool inspection.
@@ -1004,6 +1006,8 @@ extension CostUsageStoreTests {
         "494eee446bb2e5f9",
         "6366caa15c925349",
         "3f88178bf03ad704",
+        "a47b70abaf8ad86c",
+        "d9542d1ef3ce1875",
         "4a593b5d59c7bcf3",
         "b77d4ec72e14ea63",
         "cfd84d13ad7d4cfa",

@@ -25,6 +25,13 @@ CodexBar keeps the signed-in `agy` local HTTPS server alive briefly
 after each refresh and stops it when idle, or reuses a signed-in `agy` you already have running
 without taking ownership of that process.
 
+Every CodexBar-owned `agy` child (version checks, ambient or account-scoped print reports, and managed PTY sessions)
+receives `AGY_CLI_DISABLE_AUTO_UPDATE=true`, preventing passive quota probes from starting CLI auto-updates.
+The lowercase literal `true` is required: upstream reports show that `1` is ignored
+([updater behavior](https://github.com/google-antigravity/antigravity-cli/issues/942),
+[macOS print-mode evidence](https://github.com/google-antigravity/antigravity-cli/issues/1046)).
+This per-child override leaves user-launched terminal sessions and saved updater settings unchanged.
+
 The menu bar also reuses an already-running, same-user `agy` that matches the resolved executable;
 this does not require the desktop app or a saved Google account in CodexBar. Selected accounts still
 require matching identity. CLI quota refresh and **Add Account...** are separate: starting a new OAuth
@@ -175,7 +182,7 @@ be polled within the readiness deadline.
 - `POST https://cloudcode-pa.googleapis.com/v1internal:onboardUser`
 - `POST https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels`
 - `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota`
-- `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` (preferred when it returns measured
+- `POST https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` (preferred when it returns measured
   groups; older model-bucket responses use the model-endpoint fallback)
 
 ## Data sources + fallback order
@@ -309,6 +316,11 @@ shared OAuth file can still be used as a fallback credential source.
   - `ideVersion: unknown`
 
 ## Parsing and model mapping
+
+Versioned Gemini quota groups retain the name supplied by the usage response. For example, a separate
+Gemini 4 Argon group is shown as **Gemini 4 Argon weekly**, alongside the ordinary **Gemini weekly** quota.
+Quota values, account ownership, and family selection remain unchanged.
+
 - Preferred source fields:
   - `response.groups[].displayName`
   - `response.groups[].buckets[].bucketId`
@@ -327,8 +339,12 @@ shared OAuth file can still be used as a fallback credential source.
   - `Gemini` groups Gemini Pro and Gemini Flash text models.
   - `Claude + GPT` groups Claude text models and GPT/GPT-OSS text models.
 - Representative selection:
+  - Quota summaries prefer measured ordinary Gemini buckets (`gemini-5h` and `gemini-weekly`, including supported
+    cadence aliases) over model-specific Gemini allowances. Stable bucket IDs determine this preference independently
+    of display labels. Model-specific quotas remain the fallback when ordinary quota is absent, unknown, or disabled.
+    Every returned bucket retains its percentage and reset metadata in `extraRateWindows`.
   - Hidden model rows such as Lite, autocomplete, and image variants do not drive summary bars.
-  - For each group, CodexBar uses the lowest remaining known quota row and preserves that row's reset metadata.
+  - For each group, CodexBar uses the lowest remaining known candidate and preserves that row's reset metadata.
   - Rows with reset metadata but no remaining fraction stay visible as unavailable reset context only when their group
     has no known usage row.
 - `resetTime` parsing:
@@ -370,7 +386,7 @@ shared OAuth file can still be used as a fallback credential source.
   `idle` instead. The `codexbar serve` web UI skips those rows, so the web card matches the menu without repeating
   the family rule in JavaScript. See `docs/dashboard-api.md`.
 - CLI text and `cards` render quota-summary buckets once, using the same idle-family visibility rule. Missing or disabled quota stays unavailable, including in brief cards, while reset context remains visible. Raw JSON retains every bucket.
-- Linux and Omarchy list each measured quota-summary bucket once with its family title. The most constrained bucket in each family stays first for the tray meters; notification history follows the bucket when its position changes.
+- Linux and Omarchy list each measured quota-summary bucket once with its family title. Each family's selected representative stays first for the tray meters; stable bucket IDs preserve row and notification identity when titles change or quota values match.
 
 ## Quota observation history
 
@@ -513,8 +529,8 @@ generation from the producer's fallback. Identical session/line
 copies deduplicate, while contradictory copies remain partial.
 
 One cancellable job on `CostUsageScanExecutor` owns discovery, SQL, decoding, and fallback. Limits are 500 files,
-10,000 directory entries, 10,000 rows per file, 50,000 rows overall, 16 MiB per record, 64 MiB per file,
-128 MiB of attempted payload bytes overall, and a five-second cooperative scan deadline. Rejected rows consume the budget;
+10,000 directory entries, 10,000 rows per file, 100,000 rows overall, 16 MiB per record, 64 MiB per file,
+512 MiB of attempted payload bytes overall, and a 30-second cooperative scan deadline. Rejected rows consume the budget;
 exactly 500 complete databases are accepted. Discovery is incremental and JSONL is read in bounded chunks.
 Schema inspection bounds each catalogue walk to 128 entries and each table to 64 columns (one additional row detects
 truncation), with a shared 64 KiB allowance per database for inspected schema text and the same cooperative deadline/cancellation.

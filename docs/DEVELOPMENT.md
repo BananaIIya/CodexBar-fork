@@ -34,6 +34,10 @@ read_when:
 4. **Optional file log**: enable Debug → Logging → "Enable file logging" to write
    `~/Library/Logs/CodexBar/CodexBar.log` (verbosity defaults to "Verbose")
 
+## Localized countdowns
+
+`UsageFormatter.resetCountdownDescription` returns a complete relative phrase. Use `resetCountdownDuration` inside sentences that already include a preposition, such as “Runs out in %@”. Countdown wrappers such as “Regenerates %@” and “Expires %@” receive the complete relative phrase; keep their grammar without repeating its time words. Countdown units come from each language’s existing abbreviated templates; Ukrainian uses `дн.`, `год`, and `хв`, which do not require plural inflection. Keep widget catalogs generated from the app catalogs with `node Scripts/sync-widget-locales.mjs`.
+
 ## Swift Toolchain Compatibility
 
 CI builds and tests with Xcode 27 only, on GitHub's `xcode-27` image. Older
@@ -96,9 +100,11 @@ Key source, test, and packaging paths (not exhaustive):
 CodexBar/
 ├── Sources/CodexBar/          # Main app (SwiftUI + AppKit)
 │   ├── CodexbarApp.swift      # App entry point
-│   ├── StatusItemController*.swift  # Menu bar icon, menu rendering, and actions
-│   ├── UsageStore*.swift      # Usage refresh, caching, widgets, and history
-│   ├── SettingsStore*.swift   # User preferences and config persistence
+│   ├── StatusItem/            # Menu bar icon, menu rendering, and actions
+│   ├── UsageStore/            # Usage refresh, caching, widgets, and history
+│   ├── Settings/              # Preferences panes and config persistence
+│   ├── Menu/                  # Shared menu models, views, charts, and layout
+│   ├── SpendDashboard/        # Usage and spend dashboard
 │   ├── Providers/             # App-side provider settings/runtime glue
 │   └── Resources/             # Assets and localized strings
 ├── Sources/CodexBarCore/      # Shared business logic used by app, CLI, and widgets
@@ -114,6 +120,13 @@ CodexBar/
 ├── TestsLinux/                # Portable and Linux-specific CLI/core tests (target exists on macOS too)
 └── Scripts/                   # Build and packaging scripts
 ```
+
+## Linux CLI linkage
+
+The glibc CLI must not depend on `libxml2`: newer distributions use an incompatible SONAME. Keep
+`FoundationXML` imports and XML parsing under `#if os(macOS)`. Plugin SVG icons fall back to their monogram
+on Linux. CI and release builds run `bash Scripts/check-linux-cli-linkage.sh <CodexBarCLI>` against each glibc
+binary; static musl builds do not have a dynamic dependency table.
 
 ## Common Tasks
 
@@ -201,6 +214,9 @@ Lint tools are installed at repository-pinned versions by `Scripts/install_lint_
 verified before installation. TypeScript 7 installs its native package for the running Node platform and architecture
 (including Rosetta). Plugin typechecking uses only its declared libraries and source declarations, so unrelated
 ancestor `node_modules/@types` packages do not affect the result. SwiftFormat targets the package's Swift 6.2 floor.
+
+`make check` and `make lint` use the portable `lint-linux` checks on Linux. On macOS, they run the full
+`lint` checks, including app localization, the AppleScript installer regression, and SwiftFormat.
 
 ```bash
 make test

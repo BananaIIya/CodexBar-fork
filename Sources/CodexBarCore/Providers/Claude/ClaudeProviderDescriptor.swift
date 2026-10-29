@@ -85,41 +85,46 @@ public enum ClaudeProviderDescriptor {
             }
         })
 
+    private static let settingsSection = ProviderSettingsSectionRegistration(
+        ClaudeProviderSettingsKey.self,
+        supportsConfigCookieHeader: true,
+        credentialSettings: { context in
+            let manualCookieHeader = context.account == nil ? context.config?.sanitizedCookieHeader : nil
+            let routing = ClaudeCredentialRouting.resolve(
+                tokenAccountToken: context.account?.token,
+                manualCookieHeader: manualCookieHeader)
+            let source: ClaudeUsageDataSource = if context.account != nil {
+                switch routing {
+                case .adminAPIKey: .api
+                case .oauth: .oauth
+                case .webCookie: .web
+                case .none: .auto
+                }
+            } else if routing.adminAPIKey != nil {
+                .api
+            } else if routing.isOAuth {
+                .oauth
+            } else {
+                .auto
+            }
+            let cookieSource: ProviderCookieSource = routing.isOAuth || routing.adminAPIKey != nil
+                ? .off
+                : context.cookieSettings(for: .claude).cookieSource
+            return ClaudeProviderSettings(
+                usageDataSource: source,
+                webExtrasEnabled: false,
+                cookieSource: cookieSource,
+                manualCookieHeader: routing.manualCookieHeader,
+                organizationID: context.account?.sanitizedOrganizationID,
+                desktopCookiesEnabled: context.config?.claudeDesktopCookiesEnabled ?? false)
+        })
+
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .claude,
             menuBarMetrics: ProviderMenuBarMetricCapabilities(
                 supported: [.automatic, .primary, .secondary, .primaryAndSecondary, .extraUsage]),
-            settingsSection: .init(ClaudeProviderSettingsKey.self, credentialSettings: { context in
-                let manualCookieHeader = context.account == nil ? context.config?.sanitizedCookieHeader : nil
-                let routing = ClaudeCredentialRouting.resolve(
-                    tokenAccountToken: context.account?.token,
-                    manualCookieHeader: manualCookieHeader)
-                let source: ClaudeUsageDataSource = if context.account != nil {
-                    switch routing {
-                    case .adminAPIKey: .api
-                    case .oauth: .oauth
-                    case .webCookie: .web
-                    case .none: .auto
-                    }
-                } else if routing.adminAPIKey != nil {
-                    .api
-                } else if routing.isOAuth {
-                    .oauth
-                } else {
-                    .auto
-                }
-                let cookieSource: ProviderCookieSource = routing.isOAuth || routing.adminAPIKey != nil
-                    ? .off
-                    : context.cookieSettings(for: .claude).cookieSource
-                return ClaudeProviderSettings(
-                    usageDataSource: source,
-                    webExtrasEnabled: false,
-                    cookieSource: cookieSource,
-                    manualCookieHeader: routing.manualCookieHeader,
-                    organizationID: context.account?.sanitizedOrganizationID,
-                    desktopCookiesEnabled: context.config?.claudeDesktopCookiesEnabled ?? false)
-            }),
+            settingsSection: self.settingsSection,
             credentials: self.credentials,
             metadata: ProviderMetadata(
                 id: .claude,
@@ -309,7 +314,9 @@ public enum ClaudeProviderDescriptor {
                 browserDetection: context.browserDetection,
                 hasWebFallback: false)]
         }
-        if context.sourceMode == .api || self.hasAutoAdminAPIKey(context: context) {
+        if context.sourceMode == .api ||
+            (context.sourceMode == .auto && ClaudeAdminAPISettingsReader.apiKey(environment: context.env) != nil)
+        {
             return [ClaudeAdminAPIFetchStrategy()]
         }
 
@@ -343,10 +350,6 @@ public enum ClaudeProviderDescriptor {
         }
     }
 
-    private static func hasAutoAdminAPIKey(context: ProviderFetchContext) -> Bool {
-        context.sourceMode == .auto && ClaudeAdminAPISettingsReader.apiKey(environment: context.env) != nil
-    }
-
     private static func isSelectedOAuthTokenAccount(context: ProviderFetchContext) -> Bool {
         guard context.selectedTokenAccountID != nil,
               context.settings?.claude?.usageDataSource == .oauth
@@ -369,18 +372,21 @@ public enum ClaudeProviderDescriptor {
     }
 
     private static func makePlanningInput(context: ProviderFetchContext) -> ClaudeSourcePlanningInput {
-        let webExtrasEnabled = context.settings?.claude?.webExtrasEnabled ?? false
-        let hasWebSession = Self.hasPlausibleWebSession(context: context)
+        #if os(Linux)
+        let shouldAttemptOAuth = context.sourceMode == .auto ||
+            (context.runtime == .app && context.sourceMode == .oauth)
+        #else
         let shouldAttemptOAuth = context.runtime == .app &&
             (context.sourceMode == .auto || context.sourceMode == .oauth)
+        #endif
 
         return ClaudeSourcePlanningInput(
             runtime: context.runtime,
             selectedDataSource: Self.sourceDataSource(from: context.sourceMode),
-            webExtrasEnabled: webExtrasEnabled,
-            hasWebSession: hasWebSession,
+            webExtrasEnabled: context.settings?.claude?.webExtrasEnabled ?? false,
+            hasWebSession: Self.hasPlausibleWebSession(context: context),
             hasCLI: ClaudeCLIResolver.isAvailable(environment: context.env),
-            // App Auto and explicit OAuth perform one real, noninteractive OAuth attempt. Do not preflight here:
+            // App Auto, Linux CLI Auto, and explicit OAuth plan a noninteractive attempt. Do not preflight here:
             // a preflight can mutate cache state and make the real fetch misclassify a typed error.
             hasOAuthCredentials: shouldAttemptOAuth)
     }
@@ -525,8 +531,11 @@ private struct ClaudePlannedFetchStrategy: ProviderFetchStrategy {
             return await self.base.isAvailable(context)
         }
         guard self.plannedStep.isPlausiblyAvailable else { return false }
+        // CLI Auto OAuth uses the same noninteractive credential check as explicit sources, so a
+        // logged-out user still gets `noAvailableStrategy` rather than an OAuth credential error.
         if self.plannedStep.dataSource == .cli ||
-            (context.runtime == .app && self.plannedStep.dataSource == .web)
+            (context.runtime == .app && self.plannedStep.dataSource == .web) ||
+            (context.runtime == .cli && self.plannedStep.dataSource == .oauth)
         {
             return await self.base.isAvailable(context)
         }
@@ -629,7 +638,7 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
                 allowClaudeKeychainRepairWithoutPrompt: false,
                 clearInvalidCache: false)
             return false
-        } catch ClaudeOAuthCredentialsError.notFound {
+        } catch ClaudeOAuthCredentialsError.notFound, ClaudeOAuthCredentialsError.mcpOAuthOnlyKeychain {
             return true
         } catch ClaudeOAuthCredentialsError.credentialsChanged {
             return true
@@ -780,7 +789,7 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
            let credentialsError = error as? ClaudeOAuthCredentialsError
         {
             switch credentialsError {
-            case .notFound, .credentialsChanged, .refreshDelegatedToClaudeCLI:
+            case .notFound, .credentialsChanged, .mcpOAuthOnlyKeychain, .refreshDelegatedToClaudeCLI:
                 return true
             default:
                 break
@@ -788,7 +797,11 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
         }
         // In Auto mode, fall back to the next strategy (cli/web) when safe credentials are absent or OAuth fails.
         // Cancellation itself is always terminal.
+        #if os(Linux)
+        return context.sourceMode == .auto
+        #else
         return context.runtime == .app && context.sourceMode == .auto
+        #endif
     }
 
     fileprivate static func snapshot(

@@ -171,7 +171,7 @@
 "Local token history is unavailable or incomplete." = "本機 Token 歷史無法使用或不完整。";
 "Could not add Codex account" = "無法新增 Codex 帳號";
 "Could not open Terminal for Gemini" = "無法為 Gemini 開啟終端";
-"Could not start claude /login" = "無法啟動 claude /login";
+"Claude OAuth credentials read failed: CodexBar's Claude OAuth cache is temporarily unavailable in macOS Keychain. Check that the login keychain is unlocked in Keychain Access, then retry Refresh." = "無法讀取 Claude OAuth 憑證：CodexBar 的 Claude OAuth 快取在 macOS 鑰匙圈中暫時無法使用。請在「鑰匙圈存取」中確認登入鑰匙圈已解鎖，然後重新整理。";
 "Could not start codex login" = "無法啟動 codex login";
 "Could not switch system account" = "無法切換系統帳號";
 "Credits" = "額度";
@@ -620,7 +620,6 @@
 "automatic" = "自動";
 "primary_api_key_limit" = "主要（API 金鑰限制）";
 "menu_bar_style_title" = "選單列樣式";
-"menu_bar_style_subtitle" = "選單列項目的繪製方式。";
 "menu_bar_inactive_display_contrast_title" = "改善非使用中顯示器上的可見度";
 "menu_bar_inactive_display_contrast_subtitle" = "使用高對比顯示，讓其他顯示器上的圖示與指標保持清晰可讀。";
 "menu_bar_style_critters" = "小動物";
@@ -674,6 +673,8 @@
 "overview_rows_follow_order" = "概覽列一律依提供者順序排列。";
 "overview_no_providers_selected" = "未選擇提供者";
 "agent_sessions_title" = "Agent 工作階段";
+"agent_sessions_remote_title" = "遠端工作階段（Tailscale / SSH）";
+"agent_sessions_remote_subtitle" = "探索並連線至遠端主機。關閉後僅監控此 Mac。";
 "agent_sessions_subtitle" = "在選單中顯示本機及透過 SSH 發現的 Codex 和 Claude Code 工作階段。";
 "agent_sessions_hosts_title" = "其他 SSH 主機";
 "agent_sessions_footer" = "系統會自動發現 tailnet 上的 Mac。本機工作階段每 30 秒重新整理一次；遠端主機每 60 秒以及開啟選單時重新整理。";
@@ -729,6 +730,8 @@
 "acknowledgements_authors" = "作者";
 "acknowledgements_license" = "授權條款";
 "check_updates_auto" = "自動檢查更新";
+"install_updates_auto" = "自動下載並安裝更新";
+"install_updates_auto_subtitle" = "關閉時，安裝新版本前會先徵求你的確認。";
 "update_channel" = "更新頻道";
 "check_for_updates" = "檢查更新…";
 "updates_unavailable" = "此建置無法使用更新功能。";
@@ -1087,6 +1090,7 @@
 "Password" = "密碼";
 "%@ authentication is disabled." = "%@ 認證已停用。";
 "%@ cookies are disabled." = "%@ Cookie 已停用。";
+"%@ is unavailable. Edit the widget to choose a provider." = "%@ 無法使用。編輯小工具以選擇供應商。";
 "%@ web API access is disabled." = "%@ Web API 存取已停用。";
 "Disable %@ dashboard cookie usage." = "停用 %@ 儀表板 Cookie。";
 "Keychain access is disabled in Advanced, so browser cookie import is unavailable." = "進階設定中已停用鑰匙圈存取，因此無法匯入瀏覽器 Cookie。";
@@ -1152,7 +1156,6 @@
 "Windsurf session JSON bundle" = "Windsurf 工作階段 JSON 組合";
 "Workspace ID" = "工作區 ID";
 "Your StepFun platform password. Used to login and obtain a session token." = "你的 StepFun 平台密碼。用於登入並取得工作階段 token。";
-"claude /login exited with status %d." = "claude /login 以狀態 %d 結束。";
 "codex login exited with status %d." = "codex login 以狀態 %d 結束。";
 "Cookie: …\n\nor paste a cURL capture from the Abacus AI dashboard" = "Cookie: …\n\n或貼上 Abacus AI 儀表板的 cURL 擷取內容";
 "Cookie: …\n\nor paste the __Secure-next-auth.session-token value" = "Cookie: …\n\n或貼上 __Secure-next-auth.session-token 值";
@@ -1439,6 +1442,7 @@
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "佈局";
 "menu_bar_layout_footer" = "拖曳項目以排列選單列。點按項目可附加；選取已放置的項目並按 Delete 鍵可將其移除。";
+"menu_bar_layout_footer_requires_icon_and_percent" = "佈局僅適用於「%@」選單列樣式。請在上方選擇該樣式以進行編輯。";
 "menu_bar_layout_group_identity" = "身分";
 "menu_bar_layout_group_usage" = "使用量";
 "menu_bar_layout_group_time" = "時間";
@@ -1471,6 +1475,7 @@
 "menu_bar_layout_size_regular" = "一般";
 "menu_bar_layout_size_large" = "大";
 "menu_bar_layout_monospaced_digits" = "等寬數字";
+"menu_bar_layout_show_window_labels" = "顯示時段標籤";
 "menu_bar_layout_gap" = "間距";
 "menu_bar_layout_gap_tight" = "緊湊";
 "menu_bar_layout_gap_regular" = "一般";
@@ -1815,6 +1820,7 @@
 "Details for %@" = "%@ 的詳細信息";
 "EST. %@" = "預計 %@";
 "Enable Antigravity provider" = "啟用 Antigravity 提供程序";
+"Enable a provider in CodexBar → Settings → Providers." = "在 CodexBar → 設定 → 供應商中啟用一個供應商。";
 "Enable account widgets in CodexBar → Settings → Menu → Widgets. Then edit this widget to choose an account." = "在 CodexBar → 設定 → 選單 → 小工具中啟用帳號小工具。然後編輯此小部件以選擇帳戶。";
 "Error: %@" = "錯誤：%@";
 "Examples: alt+cmd+2, shift+right. Refresh (cmd+r), Settings (cmd+,) and Quit (cmd+q) are reserved." = "例：alt+cmd+2、shift+right。刷新（cmd+r）、設定（cmd+,）和退出（cmd+q）被保留。";
@@ -1997,10 +2003,7 @@
 "Top models:" = "最常用模型：";
 "Two quota burn-down charts in one tile." = "一張圖塊中包含兩個 配額 燃盡圖。";
 "Usage & spend come from your console.groq.com browser session automatically. An API key is optional and only adds Enterprise Prometheus metrics." = "使用情況和支出自動來自您的 console.groq.com 瀏覽器會話。 API 金鑰是可選的，僅添加 Enterprise Prometheus 指標。";
-"Usage data appears after a refresh." = "刷新後會顯示使用情況資料。";
-"Usage data will appear once the app refreshes." = "應用程式刷新後，將顯示使用資料。";
 "Usage history chart with recent totals." = "使用歷史記錄圖表以及最近的總計。";
-"Usage history will appear after a refresh." = "刷新後會出現使用歷史記錄。";
 "Usage limit" = "使用限制";
 "Usage limits and reset countdowns for one saved account." = "一個已儲存帳戶的使用限制和重設倒數。";
 "Usage widget with a provider switcher." = "可切換提供商的用量小工具。";
@@ -2094,6 +2097,8 @@
 "Poe usage history is unavailable." = "Poe 使用歷史記錄不可用。";
 "Stored in ~/.codexbar/config.json. Get your key from poe.com/api/keys." = "儲存在~/.codexbar/config.json中。從 poe.com/api/keys 取得金鑰。";
 "Billing" = "計費";
+"Invoice billing" = "帳單付款";
+"Prepaid" = "預付";
 "Rate limit" = "速率限制";
 "Billing and rate-limit data from the v0 Platform API" = "來自 v0 平台 API 的計費和速率限制數據";
 "v0 cost history is not available via the Platform API." = "v0 成本歷史記錄無法透過平台 API 取得。";
@@ -2183,6 +2188,10 @@
 "Stored in ~/.codexbar/config.json. Create one at console.x.ai under Settings > Management Keys; inference API keys are not accepted." = "儲存在~/.codexbar/config.json中。在「設定」>「管理金鑰」下的 console.x.ai 建立一個；推斷 API 金鑰不被接受。";
 "xai-..." = "xai-...";
 "Team ID" = "團隊 ID";
+"Vercel access token" = "Vercel 存取權杖";
+"Optional. Shows your personal budget instead of team credits. Saved in CodexBar's local config file. Or set VERCEL_ACCESS_TOKEN." = "選用。顯示你的個人預算，而非團隊額度。儲存在 CodexBar 的本機設定檔中。或設定 VERCEL_ACCESS_TOKEN。";
+"Open Vercel tokens" = "開啟 Vercel 權杖";
+"Required with a Vercel access token. Or set VERCEL_TEAM_ID." = "使用 Vercel 存取權杖時必填。或設定 VERCEL_TEAM_ID。";
 "Required. Shown in the xAI Console URL and team settings." = "必填。顯示在 xAI 控制台 URL 和團隊設定中。";
 "Sakana AI cost summary is not supported." = "暫不支持 Sakana AI 費用匯總。";
 "Stored in ~/.codexbar/config.json. Copy the Sakana AI console Cookie request header." = "儲存在~/.codexbar/config.json中。複製 Sakana AI 控制台 Cookie 請求標頭。";
@@ -2336,6 +2345,7 @@
 "Core Monthly" = "核心額度 · 每月";
 "Bobcoin usage" = "Bobcoin 用量";
 "Code 7-day" = "編程額度 · 7 天";
+"Other features" = "其他功能";
 "Quota services" = "額度服務";
 "Billing history" = "帳單歷史";
 "Renews" = "續期時間";
@@ -2437,7 +2447,7 @@
 "spend_performance_cache_help" = "將符合條件的輪次中已快取的輸入除以總輸入量。依輸入 token 數加權，並顯示樣本涵蓋範圍。";
 "spend_performance_metric_help" = "關於這些觀測值";
 "merged_icon_source_title" = "合併圖示來源";
-"merged_icon_source_subtitle" = "選擇摺疊後的合併圖示顯示哪個服務提供者。";
+"merged_icon_source_subtitle" = "「最高用量」僅比較配額。對於沒有配額的服務提供者，請使用「目前選取」。";
 "merged_icon_source_current_selection" = "目前選取";
 "merged_icon_source_highest_usage" = "最高用量";
 "merged_icon_source_frontmost_app" = "最前景的服務提供者 App";
@@ -2536,12 +2546,11 @@
 "Clear filters" = "清除篩選";
 "Change provider order" = "更改供應商順序";
 "Provider sorting" = "供應商排序";
-"Only enabled providers" = "只顯示已啟用";
+"Only show enabled providers" = "只顯示已啟用";
 "Restore default order" = "恢復預設順序";
 "Also restores the provider order in the menu bar. Can be undone." = "同時恢復選單列中的供應商順序。可以復原。";
 "Local Codex details; excluded from combined totals." = "本機 Codex 詳細資料；不計入合併總計。";
 
-"Auto uses an API key when configured, otherwise browser cookies." = "Auto uses an API key when configured, otherwise browser cookies.";
 "Stored in the CodexBar config file. You can also set COMMAND_CODE_API_KEY." = "Stored in the CodexBar config file. You can also set COMMAND_CODE_API_KEY.";
 /* OpenAI organization rate limits and live usage */
 "%@ tokens · %@ requests" = "%@ token · %@ 請求";
@@ -2661,3 +2670,71 @@
 /* Munito provider credentials */
 "Key with Read account data (Admin API) permission. Or set MUNITO_API_KEY." = "具備讀取帳戶資料（Admin API）權限的金鑰。或設定 MUNITO_API_KEY。";
 "Munito reports Admin API spend and limits, not local token cost history." = "Munito 回報 Admin API 的支出與上限，而非本機 token 成本歷史。";
+
+"Show all accounts in Overview" = "在總覽中顯示所有帳戶";
+
+"Expand cached account usage. The six-provider limit still applies." = "使用快取的帳戶用量展開所選供應商。仍最多顯示六個供應商。";
+"Edit" = "編輯";
+"Move up" = "上移";
+"Move down" = "下移";
+"Leave blank to keep the saved credential." = "留空以保留已儲存的憑證。";
+
+"No personal budget configured" = "尚未設定個人預算";
+
+"monthly_daily_target_format" = "每天約 %@，可用至重置";
+
+"Trae CN" = "Trae CN";
+"Show Trae CN usage" = "顯示 Trae CN 用量";
+"Sign in to Trae CN at trae.cn, then refresh CodexBar." = "請在 trae.cn 登入 Trae CN，然後重新整理 CodexBar。";
+"Trae CN usage response format changed." = "Trae CN 用量回應格式已變更。";
+"Trae CN request failed. Try refreshing later." = "Trae CN 請求失敗。請稍後嘗試重新整理。";
+"Use --provider copilot." = "請使用 --provider copilot。";
+"Config changed during login. Please try again." = "登入期間設定已變更。請重試。";
+
+// Session usage browser
+"Search sessions" = "搜尋對話";
+"No matching sessions" = "沒有符合的對話";
+"Select a session" = "選擇一個對話";
+"Cached input is included in input; reasoning is included in output." = "快取輸入已包含在輸入中；推理 Token 已包含在輸出中。";
+"Recent activity" = "最近活動";
+"Sort by" = "排序依據";
+"Ascending" = "升冪";
+"Descending" = "降冪";
+"Each turn includes its recorded model calls within this period. Messages sharing a turn cannot be priced separately." = "每輪包含該時間範圍內記錄的模型請求；同一輪中的多則訊息無法分別計費。";
+"No turn-level usage records are available." = "沒有可用的輪次用量記錄。";
+"Unattributed usage" = "未歸屬的用量";
+"Turn %d" = "第 %d 輪";
+"Model requests" = "模型請求";
+"Tool activity has no separate recorded token or monetary cost." = "日誌未單獨記錄工具呼叫的 Token 或費用。";
+"Request %d" = "第 %d 次請求";
+
+"Request details exceed the limit." = "請求明細超過載入上限。";
+
+"Request details are unavailable. Refresh usage and try again." = "請求明細暫不可用，請重新整理用量後再試。";
+"Primary" = "主要";
+"Secondary" = "次要";
+"Tertiary" = "第三";
+
+/* Chatbox AI */
+"Chatbox AI" = "Chatbox AI";
+"Show Chatbox AI usage" = "顯示 Chatbox AI 用量";
+"Chatbox AI license key is invalid. Update it in Settings." = "Chatbox AI 授權金鑰無效。請在設定中更新。";
+"Chatbox AI denied access. Check your license." = "Chatbox AI 拒絕了存取。請檢查授權。";
+"Chatbox AI is rate limiting requests. Try again later." = "Chatbox AI 正在限制請求頻率。請稍後再試。";
+"Chatbox AI request failed. Try refreshing later." = "Chatbox AI 請求失敗。請稍後嘗試重新整理。";
+"Chatbox AI returned an unrecognized response. Update CodexBar and try again." = "Chatbox AI 傳回了無法辨識的回應。請更新 CodexBar 後再試。";
+
+/* abliteration.ai */
+"abliteration.ai" = "abliteration.ai";
+"Show abliteration.ai usage" = "顯示 abliteration.ai 用量";
+"abliteration.ai is rate limiting requests. Try again later." = "abliteration.ai 正在限制請求頻率。請稍後再試。";
+"abliteration.ai request failed. Try refreshing later." = "abliteration.ai 請求失敗。請稍後嘗試重新整理。";
+"abliteration.ai returned an unrecognized response. Update CodexBar and try again." = "abliteration.ai 傳回了無法辨識的回應。請更新 CodexBar 後再試。";
+"Check your API key in Settings." = "請在設定中檢查你的 API 金鑰。";
+"Kimi Code" = "Kimi Code";
+
+"OpenCode local history" = "OpenCode 本機歷史記錄";
+
+"Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "在 Codex 歷史記錄中顯示此 Mac 上記錄的 OpenCode 用量。預設關閉；一律排除限定範圍或其他 CODEX_HOME 位置。";
+"Auto uses the active saved session, otherwise an API key or browser cookies." = "自動使用目前啟用的已儲存工作階段，否則使用 API 金鑰或瀏覽器 Cookie。";
+"Store multiple Command Code subscription sessions." = "儲存多個 Command Code 訂閱工作階段。";

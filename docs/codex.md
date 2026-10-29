@@ -9,6 +9,10 @@ read_when:
 
 # Codex provider
 
+Enable **Settings → Menu Bar → Show all accounts in Overview** to include this provider’s cached account
+cards in Overview. The existing account source and provider selection remain unchanged; see
+[Overview account rows](configuration.md#menu-bar-controls).
+
 The **Plan Usage** submenu includes recorded remaining-quota burndown above utilization history,
 including saved Monthly windows. See [recorded quota burndown](widgets/burndown-proof.md)
 for capture-age semantics and the existing history retention/privacy behavior.
@@ -50,6 +54,9 @@ Usage source picker:
 - The menu and provider settings list every still-available expiry, while the optional credits setting controls
   nearing-expiry notifications. CodexBar does not redeem or modify reset credits.
 - `rate_limit.primary_window` / `secondary_window` map to the session/weekly lanes.
+- When a response explicitly reports a fixed 30-day window (`limit_window_seconds: 2592000`),
+  pace uses those 43,200 minutes rather than inferring a calendar month from the reset date.
+  This also covers observed Free-plan responses; it does not assume every Free account has that window.
 - Suspicious weekly resets keep the last trusted usage while confirmation is pending. A successful refresh for the
   same account and workspace clears stale connectivity errors even when the reading is withheld; failed, cancelled,
   or superseded refreshes do not clear them. Cached usage, credits, and other accounts remain unchanged.
@@ -150,6 +157,13 @@ again immediately before the live replacement. External writers can still race a
 Saved-account removal and import repair retain an old managed home while another saved record references
 the same path. Cleanup still requires the managed-home safety checks and releases the home after its last reference.
 
+Registry write attempts under the account lock emit one bounded `codex-accounts` log entry with the operation,
+before/requested/written row counts, and success or failure. Successful managed-home deletions emit the operation
+only. These diagnostics contain no account identifiers, fingerprints, email addresses, home paths, tokens, or
+error descriptions. Enable file logging in Settings → Debug to include app mutations in the existing debug log.
+The logs can help investigate a future disappearance; they do not repair account loss, and missing log lines
+alone do not prove that an external process changed the registry.
+
 CLI promotion reads local files only and never requests Keychain access or starts login. It leaves
 the app's display selection and running Codex processes alone; `CODEX_HOME` selects the live destination.
 That destination must not alias a managed home, because the swap would overwrite its preserved credentials.
@@ -236,6 +250,7 @@ and stable account numbers distinguish rows while usable workspace labels remain
 - Uses an off-screen `WKWebView` with a per-account `WKWebsiteDataStore`.
   - Store key: deterministic UUID from the normalized email.
 - WebKit store can hold multiple accounts concurrently.
+- Active page preparation and JavaScript evaluations share the refresh deadline. Expired pages are terminated and discarded; verified API usage remains available. Timeout diagnostics do not start new JavaScript after the deadline.
 - A browser session rejected for an account mismatch or a login requirement is removed only from the affected store. Imports into the same store finish validation and cleanup before the next import writes cookies; other accounts remain independent.
 - WebView acquisitions retain ownership during page preparation. Store eviction invalidates its pending preparations; evict-all invalidates all. Stale success/failure/timeout retries cannot displace replacements. Ordinary lease release leaves concurrent temporary views valid. Leases retain their cleanup owner independently of the cache and release once: validated pages allow brief reuse; other releases schedule deferred cleanup, including temporary views.
 - Cookie import (Automatic mode, when WebKit store has no matching session or login required):
@@ -325,6 +340,7 @@ and stable account numbers distinguish rows while usable workspace labels remain
 4) Last imported browser cookie email (cached).
 
 ## Credits
+- Monthly caps with a reported reset show a daily target using the remaining allowance and local calendar days. The target follows pace visibility; prepaid balances without a monthly cap do not get a target.
 - Background credits refreshes coalesce for the same account. Cancelling and replacing a refresh keeps the replacement tracked until it finishes; retired credits and history-backfill tasks cannot clear newer work.
 - Web dashboard fills credits only when OAuth/CLI do not provide them. Account-matched extra usage reconciles monthly caps and purchased balances separately; the optional credits setting controls visibility.
 - When usage reports limited workspace credits without an amount, an optional read of the account's `remaining_balance` endpoint uses the same OAuth or browser session. Access depends on workspace permissions. Failure preserves ordinary usage and monthly-limit data.
@@ -358,6 +374,9 @@ Usage & Spend includes this Mac's Codex session home even when the CLI keeps cre
 there is no `auth.json`. Local cost estimates do not require account identity or a successful quota refresh.
 Managed and profile homes retain their separate history scopes; a home already represented by a visible account
 is not added again as a local source. This does not read the CLI's keyring credentials.
+
+The static musl Linux CLI reserves an 8 MiB thread stack so scanning non-empty Codex session logs
+does not exhaust musl's smaller default stack. The scanner and cache format stay shared with glibc and macOS.
 
 For a manual comparison with another development machine, run `codexbar cost --provider codex --remote <ssh-host>`.
 Both hosts scan their own native Codex logs once and return separate summaries, retaining their own day boundaries,
@@ -516,6 +535,8 @@ unavailable (`costUSD: null`). This opt-in CLI mode does not change ordinary cos
     Priority trace scans resume after ordinary log pruning when enough distributed content anchors still match;
     changed source rows, replaced databases, or insufficient matching anchors require a fresh scan. Temporary
     trace-database failures retain the last validated report pricing and leave scan freshness unchanged for retry.
+    Idle WAL trace databases without sidecars use a read-only immutable fallback when ordinary reads fail.
+    The fallback leaves the database and sidecars untouched; a file change during the read keeps validation pending for retry.
     Successful historical queries update their own pricing window independently of the live scan cursor, including
     results with no priority turns; validated pricing outside that window remains intact.
 - Window: configurable 1-365 day rolling history.

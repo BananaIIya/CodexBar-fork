@@ -177,6 +177,11 @@ enum CostUsageScanner {
 
     struct Options {
         var codexSessionsRoot: URL?
+        /// Opt-in (default off): include the machine-local OpenCode database in the Codex
+        /// report as a source-recorded contribution (#4752). The scanner's ambient-path
+        /// gate in the fetcher decides whether it applies; the store merge keeps it
+        /// provenance-labelled regardless.
+        var includeOpenCodeLocalHistory = false
         var claudeProjectsRoots: [URL]?
         var cacheRoot: URL?
         var codexTraceDatabaseURL: URL?
@@ -202,6 +207,7 @@ enum CostUsageScanner {
 
         init(
             codexSessionsRoot: URL? = nil,
+            includeOpenCodeLocalHistory: Bool = false,
             claudeProjectsRoots: [URL]? = nil,
             cacheRoot: URL? = nil,
             codexTraceDatabaseURL: URL? = nil,
@@ -215,6 +221,7 @@ enum CostUsageScanner {
             codexScanWorkRecorderForTesting: CodexScanWorkRecorder? = nil)
         {
             self.codexSessionsRoot = codexSessionsRoot
+            self.includeOpenCodeLocalHistory = includeOpenCodeLocalHistory
             self.claudeProjectsRoots = claudeProjectsRoots
             self.cacheRoot = cacheRoot
             self.codexTraceDatabaseURL = codexTraceDatabaseURL
@@ -2644,7 +2651,7 @@ enum CostUsageScanner {
         return CostUsageDayRange.dayKey(from: shifted, calendar: calendar)
     }
 
-    private static func localStartOfDay(_ dayKey: String, calendar: Calendar) -> Date? {
+    static func localStartOfDay(_ dayKey: String, calendar: Calendar) -> Date? {
         let calendar = CostUsageDayRange.localGregorianCalendar(matching: calendar)
         return self.parseDayKey(dayKey, calendar: calendar).map { calendar.startOfDay(for: $0) }
     }

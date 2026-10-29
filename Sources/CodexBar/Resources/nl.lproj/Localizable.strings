@@ -168,7 +168,7 @@
 "Local token history is unavailable or incomplete." = "De lokale tokengeschiedenis is niet beschikbaar of onvolledig.";
 "Could not add Codex account" = "Kan Codex-account niet toevoegen";
 "Could not open Terminal for Gemini" = "Kan Terminal voor Gemini niet openen";
-"Could not start claude /login" = "Kan claude /login niet starten";
+"Claude OAuth credentials read failed: CodexBar's Claude OAuth cache is temporarily unavailable in macOS Keychain. Check that the login keychain is unlocked in Keychain Access, then retry Refresh." = "Claude OAuth-inloggegevens konden niet worden gelezen: de Claude OAuth-cache van CodexBar is tijdelijk niet beschikbaar in de macOS-sleutelhanger. Controleer in Sleutelhangertoegang of de inlogsleutelhanger ontgrendeld is en probeer opnieuw te vernieuwen.";
 "Could not start codex login" = "Kan codex-aanmelding niet starten";
 "Could not switch system account" = "Kan van systeemaccount niet wisselen";
 "Credits" = "Kredieten";
@@ -621,7 +621,6 @@
 
 /* Display Pane */
 "menu_bar_style_title" = "Menubalkstijl";
-"menu_bar_style_subtitle" = "Hoe het menubalkitem wordt weergegeven.";
 "menu_bar_inactive_display_contrast_title" = "Zichtbaarheid op inactieve beeldschermen verbeteren";
 "menu_bar_inactive_display_contrast_subtitle" = "Gebruikt weergave met hoog contrast zodat het pictogram en de metriek leesbaar blijven op andere beeldschermen.";
 "menu_bar_style_critters" = "Beestjes";
@@ -675,6 +674,8 @@
 "overview_rows_follow_order" = "Overzichtsrijen volgen altijd de volgorde van de provider.";
 "overview_no_providers_selected" = "Geen aanbieders geselecteerd";
 "agent_sessions_title" = "Agentsessies";
+"agent_sessions_remote_title" = "Externe sessies (Tailscale / SSH)";
+"agent_sessions_remote_subtitle" = "Ontdek externe hosts en maak verbinding. Schakel uit om alleen deze Mac te volgen.";
 "agent_sessions_subtitle" = "Toon lokale en via SSH gevonden Codex- en Claude Code-sessies in het menu.";
 "agent_sessions_hosts_title" = "Aanvullende SSH-hosts";
 "agent_sessions_footer" = "Macs op uw tailnet worden automatisch gevonden. Lokale sessies worden elke 30 seconden vernieuwd; externe hosts elke 60 seconden en wanneer het menu wordt geopend.";
@@ -733,6 +734,8 @@
 "acknowledgements_authors" = "Auteurs";
 "acknowledgements_license" = "Licentie";
 "check_updates_auto" = "Automatisch controleren op updates";
+"install_updates_auto" = "Updates automatisch downloaden en installeren";
+"install_updates_auto_subtitle" = "Als dit uit staat, word je gevraagd voordat een nieuwe versie wordt geïnstalleerd.";
 "update_channel" = "Kanaal bijwerken";
 "check_for_updates" = "Controleer op updates…";
 "updates_unavailable" = "Updates zijn niet beschikbaar in deze build.";
@@ -1220,6 +1223,7 @@
 "Password" = "Wachtwoord";
 "%@ authentication is disabled." = "%@-authenticatie is uitgeschakeld.";
 "%@ cookies are disabled." = "%@ cookies zijn uitgeschakeld.";
+"%@ is unavailable. Edit the widget to choose a provider." = "%@ is niet beschikbaar. Bewerk de widget om een provider te kiezen.";
 "%@ web API access is disabled." = "%@ web-API-toegang is uitgeschakeld.";
 "Disable %@ dashboard cookie usage." = "Schakel het gebruik van %@ dashboardcookies uit.";
 "Keychain access is disabled in Advanced, so browser cookie import is unavailable." = "De sleutelhangertoegang is uitgeschakeld in Geavanceerd, dus het importeren van browsercookies is niet beschikbaar.";
@@ -1285,7 +1289,6 @@
 "Windsurf session JSON bundle" = "Windsurfsessie JSON-bundel";
 "Workspace ID" = "Werkruimte-ID";
 "Your StepFun platform password. Used to login and obtain a session token." = "Uw StepFun-platformwachtwoord. Wordt gebruikt om in te loggen en een sessietoken te verkrijgen.";
-"claude /login exited with status %d." = "claude /login afgesloten met status %d.";
 "codex login exited with status %d." = "codex login afgesloten met status %d.";
 "Cookie: …\n\nor paste a cURL capture from the Abacus AI dashboard" = "Cookie: …\n\nof plak een cURL-opname vanuit het Abacus AI-dashboard";
 "Cookie: …\n\nor paste the __Secure-next-auth.session-token value" = "Cookie: …\n\nof plak de __Secure-next-auth.session-token-waarde";
@@ -1408,6 +1411,7 @@
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Indeling";
 "menu_bar_layout_footer" = "Sleep tokens om de menubalk in te delen. Klik op een token om deze toe te voegen; selecteer een geplaatst token en druk op Delete om het te verwijderen.";
+"menu_bar_layout_footer_requires_icon_and_percent" = "De indeling is alleen van toepassing op de menubalkstijl ‘%@’. Kies die stijl hierboven om deze te bewerken.";
 "menu_bar_layout_group_identity" = "Identiteit";
 "menu_bar_layout_group_usage" = "Gebruik";
 "menu_bar_layout_group_time" = "Tijd";
@@ -1440,6 +1444,7 @@
 "menu_bar_layout_size_regular" = "Normaal";
 "menu_bar_layout_size_large" = "Groot";
 "menu_bar_layout_monospaced_digits" = "Cijfers met vaste breedte";
+"menu_bar_layout_show_window_labels" = "Periodelabels tonen";
 "menu_bar_layout_gap" = "Tussenruimte";
 "menu_bar_layout_gap_tight" = "Krap";
 "menu_bar_layout_gap_regular" = "Normaal";
@@ -1796,6 +1801,7 @@
 "Details for %@" = "Details voor %@";
 "EST. %@" = "Geschatte %@";
 "Enable Antigravity provider" = "Schakel de Antigravity-provider in";
+"Enable a provider in CodexBar → Settings → Providers." = "Schakel een provider in via CodexBar → Instellingen → Providers.";
 "Enable account widgets in CodexBar → Settings → Menu → Widgets. Then edit this widget to choose an account." = "Schakel accountwidgets in CodexBar → Instellingen → Menu → Widgets in. Bewerk vervolgens deze widget om een ​​account te kiezen.";
 "Error: %@" = "Fout: %@";
 "Examples: alt+cmd+2, shift+right. Refresh (cmd+r), Settings (cmd+,) and Quit (cmd+q) are reserved." = "Voorbeelden: alt+cmd+2, shift+right. Vernieuwen (cmd+r), Instellingen (cmd+,) en Afsluiten (cmd+q) zijn gereserveerd.";
@@ -2010,10 +2016,7 @@
 "Top models:" = "Topmodellen:";
 "Two quota burn-down charts in one tile." = "Twee Quotum burn-down charts in één tegel.";
 "Usage & spend come from your console.groq.com browser session automatically. An API key is optional and only adds Enterprise Prometheus metrics." = "Gebruik en uitgaven komen automatisch uit uw console.groq.com-browsersessie. Een API-sleutel is optioneel en voegt alleen Enterprise Prometheus Metriek toe.";
-"Usage data appears after a refresh." = "Gebruiksgegevens verschijnen na een vernieuwing.";
-"Usage data will appear once the app refreshes." = "Gebruiksgegevens verschijnen zodra de app is vernieuwd.";
 "Usage history chart with recent totals." = "Gebruiksgeschiedenisgrafiek met recente totalen.";
-"Usage history will appear after a refresh." = "De gebruiksgeschiedenis verschijnt na een vernieuwing.";
 "Usage limit" = "Gebruikslimiet";
 "Usage limits and reset countdowns for one saved account." = "Gebruikslimieten en reset-countdowns voor één opgeslagen account.";
 "Usage widget with a provider switcher." = "Gebruikswidget met een providerwisselaar.";
@@ -2111,6 +2114,8 @@
 "Poe usage history is unavailable." = "Poe-gebruiksgeschiedenis is niet beschikbaar.";
 "Stored in ~/.codexbar/config.json. Get your key from poe.com/api/keys." = "Opgeslagen in ~/.codexbar/config.json. Haal uw sleutel op bij poe.com/api/keys.";
 "Billing" = "Facturering";
+"Invoice billing" = "Betaling op factuur";
+"Prepaid" = "Vooruitbetaald";
 "Rate limit" = "Verzoeksnelheidslimiet";
 "Billing and rate-limit data from the v0 Platform API" = "Factureringsgegevens en verzoeksnelheidslimieten van de v0 Platform API";
 "v0 cost history is not available via the Platform API." = "De kostengeschiedenis van v0 is niet beschikbaar via het platform API.";
@@ -2200,6 +2205,10 @@
 "Stored in ~/.codexbar/config.json. Create one at console.x.ai under Settings > Management Keys; inference API keys are not accepted." = "Opgeslagen in ~/.codexbar/config.json. Maak er een aan op console.x.ai onder Instellingen > Beheersleutels; gevolgtrekking API-sleutels worden niet geaccepteerd.";
 "xai-..." = "xai-...";
 "Team ID" = "Team ID";
+"Vercel access token" = "Vercel-toegangstoken";
+"Optional. Shows your personal budget instead of team credits. Saved in CodexBar's local config file. Or set VERCEL_ACCESS_TOKEN." = "Optioneel. Toont je persoonlijke budget in plaats van teamtegoed. Opgeslagen in het lokale configuratiebestand van CodexBar. Of stel VERCEL_ACCESS_TOKEN in.";
+"Open Vercel tokens" = "Vercel-tokens openen";
+"Required with a Vercel access token. Or set VERCEL_TEAM_ID." = "Vereist samen met een Vercel-toegangstoken. Of stel VERCEL_TEAM_ID in.";
 "Required. Shown in the xAI Console URL and team settings." = "Vereist. Weergegeven in de xAI-console URL en teaminstellingen.";
 "Sakana AI cost summary is not supported." = "Sakana AI-kostenoverzicht wordt niet ondersteund.";
 "Stored in ~/.codexbar/config.json. Copy the Sakana AI console Cookie request header." = "Opgeslagen in ~/.codexbar/config.json. Kopieer de Sakana AI-console Cookie-verzoekheader.";
@@ -2353,6 +2362,7 @@
 "Core Monthly" = "Kern maandelijks";
 "Bobcoin usage" = "Bobcoin-gebruik";
 "Code 7-day" = "Codeer 7-daags Quotum";
+"Other features" = "Andere functies";
 "Quota services" = "Quotum-diensten";
 "Billing history" = "Factureringsgeschiedenis";
 "Renews" = "Vernieuwt";
@@ -2458,7 +2468,7 @@
 "spend_performance_cache_help" = "Gecachte invoer gedeeld door de totale invoer van de gespreksbeurten die in aanmerking komen. Gewogen op basis van invoertokens, met vermelding van de dekking van de metingen.";
 "spend_performance_metric_help" = "Over deze waarnemingen";
 "merged_icon_source_title" = "Bron van gecombineerd pictogram";
-"merged_icon_source_subtitle" = "Kies welke provider het ingeklapte gecombineerde pictogram toont.";
+"merged_icon_source_subtitle" = "‘Hoogste gebruik’ vergelijkt alleen quota. Gebruik ‘Huidige selectie’ voor providers zonder quota.";
 "merged_icon_source_current_selection" = "Huidige selectie";
 "merged_icon_source_highest_usage" = "Hoogste gebruik";
 "merged_icon_source_frontmost_app" = "Provider-app op de voorgrond";
@@ -2557,12 +2567,11 @@
 "Clear filters" = "Filters wissen";
 "Change provider order" = "Volgorde van aanbieders wijzigen";
 "Provider sorting" = "Aanbieders sorteren";
-"Only enabled providers" = "Alleen ingeschakelde aanbieders";
+"Only show enabled providers" = "Alleen ingeschakelde aanbieders tonen";
 "Restore default order" = "Standaardvolgorde herstellen";
 "Also restores the provider order in the menu bar. Can be undone." = "Herstelt ook de volgorde van aanbieders in de menubalk. Kan ongedaan worden gemaakt.";
 "Local Codex details; excluded from combined totals." = "Lokale Codex-details; niet opgenomen in de gecombineerde totalen.";
 
-"Auto uses an API key when configured, otherwise browser cookies." = "Auto uses an API key when configured, otherwise browser cookies.";
 "Stored in the CodexBar config file. You can also set COMMAND_CODE_API_KEY." = "Stored in the CodexBar config file. You can also set COMMAND_CODE_API_KEY.";
 /* OpenAI organization rate limits and live usage */
 "%@ tokens · %@ requests" = "%@ tokens · %@ verzoeken";
@@ -2680,3 +2689,71 @@
 /* Munito provider credentials */
 "Key with Read account data (Admin API) permission. Or set MUNITO_API_KEY." = "Sleutel met machtiging Accountgegevens lezen (Admin API). Of stel MUNITO_API_KEY in.";
 "Munito reports Admin API spend and limits, not local token cost history." = "Munito meldt uitgaven en limieten van de Admin API, niet de lokale tokenkostenhistorie.";
+
+"Show all accounts in Overview" = "Alle accounts in het overzicht tonen";
+
+"Expand cached account usage. The six-provider limit still applies." = "Klap geselecteerde aanbieders uit met gebruiksgegevens van accounts uit de cache. De limiet van zes aanbieders blijft gelden.";
+"Edit" = "Bewerken";
+"Move up" = "Omhoog";
+"Move down" = "Omlaag";
+"Leave blank to keep the saved credential." = "Laat leeg om de opgeslagen inloggegevens te behouden.";
+
+"No personal budget configured" = "Geen persoonlijk budget ingesteld";
+
+"monthly_daily_target_format" = "≈ %@ / dag om tot de reset mee te gaan";
+
+"Trae CN" = "Trae CN";
+"Show Trae CN usage" = "Trae CN-gebruik tonen";
+"Sign in to Trae CN at trae.cn, then refresh CodexBar." = "Log in bij Trae CN op trae.cn en vernieuw daarna CodexBar.";
+"Trae CN usage response format changed." = "De indeling van het Trae CN-gebruiksantwoord is gewijzigd.";
+"Trae CN request failed. Try refreshing later." = "Het Trae CN-verzoek is mislukt. Probeer later opnieuw te vernieuwen.";
+"Use --provider copilot." = "Gebruik --provider copilot.";
+"Config changed during login. Please try again." = "De configuratie is gewijzigd tijdens het inloggen. Probeer het opnieuw.";
+
+// Session usage browser
+"Search sessions" = "Sessies zoeken";
+"No matching sessions" = "Geen overeenkomende sessies";
+"Select a session" = "Selecteer een sessie";
+"Cached input is included in input; reasoning is included in output." = "Invoer uit de cache is inbegrepen in invoer; redeneertokens zijn inbegrepen in uitvoer.";
+"Recent activity" = "Recente activiteit";
+"Sort by" = "Sorteren op";
+"Ascending" = "Oplopend";
+"Descending" = "Aflopend";
+"Each turn includes its recorded model calls within this period. Messages sharing a turn cannot be priced separately." = "Elke beurt bevat de modelverzoeken die in deze periode zijn vastgelegd. Berichten in dezelfde beurt kunnen niet apart worden geprijsd.";
+"No turn-level usage records are available." = "Geen gebruiksgegevens per beurt beschikbaar.";
+"Unattributed usage" = "Niet-toegewezen gebruik";
+"Turn %d" = "Beurt %d";
+"Model requests" = "Modelverzoeken";
+"Tool activity has no separate recorded token or monetary cost." = "Voor hulpmiddelaanroepen worden geen afzonderlijke token- of geldkosten vastgelegd.";
+"Request %d" = "Verzoek %d";
+
+"Request details exceed the limit." = "De aanvraagdetails overschrijden de limiet.";
+
+"Request details are unavailable. Refresh usage and try again." = "De aanvraagdetails zijn niet beschikbaar. Vernieuw het gebruik en probeer het opnieuw.";
+"Primary" = "Primair";
+"Secondary" = "Secundair";
+"Tertiary" = "Tertiair";
+
+/* Chatbox AI */
+"Chatbox AI" = "Chatbox AI";
+"Show Chatbox AI usage" = "Chatbox AI-gebruik tonen";
+"Chatbox AI license key is invalid. Update it in Settings." = "De Chatbox AI-licentiesleutel is ongeldig. Werk deze bij in Instellingen.";
+"Chatbox AI denied access. Check your license." = "Chatbox AI heeft de toegang geweigerd. Controleer je licentie.";
+"Chatbox AI is rate limiting requests. Try again later." = "Chatbox AI beperkt het aantal verzoeken. Probeer het later opnieuw.";
+"Chatbox AI request failed. Try refreshing later." = "Het Chatbox AI-verzoek is mislukt. Probeer later opnieuw te vernieuwen.";
+"Chatbox AI returned an unrecognized response. Update CodexBar and try again." = "Chatbox AI heeft een onbekend antwoord teruggegeven. Werk CodexBar bij en probeer het opnieuw.";
+
+/* abliteration.ai */
+"abliteration.ai" = "abliteration.ai";
+"Show abliteration.ai usage" = "abliteration.ai-gebruik tonen";
+"abliteration.ai is rate limiting requests. Try again later." = "abliteration.ai beperkt het aantal verzoeken. Probeer het later opnieuw.";
+"abliteration.ai request failed. Try refreshing later." = "Het abliteration.ai-verzoek is mislukt. Probeer later opnieuw te vernieuwen.";
+"abliteration.ai returned an unrecognized response. Update CodexBar and try again." = "abliteration.ai heeft een onbekend antwoord teruggegeven. Werk CodexBar bij en probeer het opnieuw.";
+"Check your API key in Settings." = "Controleer je API-sleutel in Instellingen.";
+"Kimi Code" = "Kimi Code";
+
+"OpenCode local history" = "Lokale OpenCode-geschiedenis";
+
+"Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Toont het op deze Mac vastgelegde OpenCode-gebruik in de Codex-geschiedenis. Standaard uitgeschakeld; CODEX_HOME-locaties met een beperkt bereik en alternatieve locaties blijven altijd uitgesloten.";
+"Auto uses the active saved session, otherwise an API key or browser cookies." = "Automatisch gebruikt de actieve opgeslagen sessie, anders een API-sleutel of browsercookies.";
+"Store multiple Command Code subscription sessions." = "Bewaar meerdere Command Code-abonnementssessies.";

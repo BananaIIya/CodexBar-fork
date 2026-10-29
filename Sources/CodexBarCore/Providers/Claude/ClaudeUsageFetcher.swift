@@ -288,7 +288,7 @@ public struct ClaudeUsageFetcher: ClaudeUsageFetching, Sendable {
                 }
                 // Metadata changes do not grant credential access; retain the same owner-CLI fallback as absence.
                 switch error {
-                case .notFound, .credentialsChanged:
+                case .notFound, .credentialsChanged, .mcpOAuthOnlyKeychain:
                     throw error
                 default:
                     throw ClaudeUsageError.oauthFailed(error.localizedDescription)
@@ -1067,19 +1067,10 @@ extension ClaudeUsageFetcher {
     }
 
     private static func oauthScopedWeeklyLimitWindows(from usage: OAuthUsageResponse) -> [NamedRateWindow] {
-        let limits = usage.limits?.map { entry in
-            ClaudeScopedWeeklyLimitMapper.Limit(
-                kind: entry.kind,
-                group: entry.group,
-                percent: entry.percent,
-                resetsAt: ISO8601DateParser.parse(entry.resetsAt),
-                modelID: entry.scope?.model?.id,
-                modelName: entry.scope?.model?.displayName)
-        }
         // `is_active` is intentionally not a filter: observed enforceable scoped limits report false.
-        return ClaudeScopedWeeklyLimitMapper.extraRateWindows(
-            from: limits,
-            resetDescription: Self.formatResetDate)
+        ClaudeScopedWeeklyLimitMapper.extraRateWindows(
+            from: usage.limits,
+            resetDescription: self.formatResetDate)
     }
 
     // MARK: - Web API path (uses browser cookies)

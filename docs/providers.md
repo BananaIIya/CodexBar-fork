@@ -8,7 +8,7 @@ read_when:
 
 # Providers
 
-CodexBar currently registers 106 provider IDs. Some companies expose multiple surfaces, such as Codex vs OpenAI API or
+CodexBar currently registers 110 provider IDs. Some companies expose multiple surfaces, such as Codex vs OpenAI API or
 OpenCode vs OpenCode Go, because the auth source and quota shape differ.
 
 ## Fetch strategies (current)
@@ -76,12 +76,12 @@ complete when the available scan window covers fewer days.
 | Codex | App Auto: OAuth API (`oauth`) → CLI RPC/PTy (`codex-cli`). CLI Auto: Web dashboard (`openai-web`) → CLI RPC/PTy (`codex-cli`). |
 | OpenAI | Admin API key (`api`) for organization spend/usage; legacy API-key balance fallback. |
 | Azure OpenAI | API key + endpoint + deployment probe (`api`) for deployment status validation. |
-| Claude | Admin API key (`api`) when configured; otherwise App Auto: OAuth API (`oauth`) → CLI PTY (`claude`) → Web API (`web`). CLI Auto: Web API (`web`) → CLI PTY (`claude`). |
+| Claude | Admin API key (`api`) when configured; otherwise App Auto: OAuth API (`oauth`) → CLI PTY (`claude`) → Web API (`web`). CLI Auto: Web API (`web`) → CLI PTY (`claude`); on Linux, Web API (`web`) → OAuth API (`oauth`) → CLI PTY (`claude`). |
 | Gemini | Gemini CLI OAuth quotas (`auto`/`api`, default), or opt-in Gemini app 5-hour/weekly limits via cookies (`web`). |
 | Antigravity | Local LSP/HTTP probe (`local`). |
 | Cursor | Web API via cookies → legacy stored session → Cursor.app local auth (`web`). |
 | OpenCode | Web dashboard via cookies (`web`). |
-| OpenCode Go | Unscoped Auto: local SQLite cost history with API overlay (`local+api`) → usage API (`api`) → web dashboard (`web`). Scoped Auto (selected account/manual cookie/workspace): web → local → API. Explicit API/Web: selected source only. |
+| OpenCode Go | Unscoped Auto: local SQLite history with configured API, browser, then CLI quotas (`local+api`/`local+web`/`local+cli`). Without history: configured API key first; otherwise web → CLI. Scoped Auto (selected account/manual cookie/workspace): web → local → API. Explicit API/Web: selected source only. |
 | Alibaba Coding Plan | Console RPC via web cookies (auto/manual) with API key fallback (`web`, `api`). |
 | Alibaba Token Plan | Signed-in Bailian CLI (`cli`) → subscription summary API via browser or manual cookies (`web`). |
 | Qwen Cloud | Qwen Cloud 5-hour/weekly Token Plan APIs via browser or manual cookies (`web`). |
@@ -113,7 +113,7 @@ complete when the available scan window covers fewer days.
 | [v0](v0.md) | API key and optional project scope from settings/env → bundled plugin for Platform API billing and rate limits (`api`). |
 | [DevPass](devpass.md) | Regular LLM Gateway API key → bundled plugin for plan credits, premium weekly usage, and all-time key spend (`api`). |
 | [Atlas Cloud](atlascloud.md) | Standard API key → account-wide available USD balance (`api`). |
-| [Vercel AI Gateway](vercel.md) | AI Gateway API key → team-wide USD balance and lifetime spend (`api`). |
+| [Vercel AI Gateway](vercel.md) | AI Gateway API key → team-wide USD balance and lifetime spend; optional Vercel access token and Team ID → personal budget instead (`api`). |
 | Windsurf | Web session bundle from browser localStorage (`web`) → local SQLite cache (`local`). |
 | Ollama | API key verifies Cloud API access (`api`); browser cookies expose current credit balance/details or legacy quota windows (`web`). |
 | [llmman](llmman.md) | Local `llmman serve` node report, optional API key → bundled plugin for loaded-model memory and store summary (`api`). |
@@ -167,6 +167,7 @@ complete when the available scan window covers fewer days.
 | Provider | Source |
 |---|---|
 | [Langdock](langdock.md) | Selected Edge, Chrome, or Safari profile → personal included session and weekly limits (`web`, macOS). |
+| [Soniox](soniox.md) | Organization API key for prepaid USD balance and monthly spend against the organization budget. |
 | [X API](xapi.md) | Browser or manual console.x.com cookies for prepaid and free credits, including negative balances. |
 | [Future AGI](futureagi.md) | API key and secret key (billing-period usage, allowances, and estimated cost). |
 | [LithosAI](lithosai.md) | Browser or manual console cookies for prepaid USD balance and optional UTC spend. |
@@ -184,6 +185,9 @@ complete when the available scan window covers fewer days.
 | [Parallel](parallel.md) | Browser session on platform.parallel.ai for the prepaid credit balance and pending debit. |
 | [Claude Platform](claudeplatform.md) | Browser or manual platform.claude.com session cookies for Console API credit balance, expiring credit grants, and month-to-date spend. |
 | [Munito](munito.md) | Admin API key with Read account data permission for today's and this month's spend against the organization's spend limits. |
+| [Trae CN](traecn.md) | Browser session for account credit usage. |
+| [Chatbox AI](chatbox.md) | API token |
+| [abliteration.ai](abliteration.md) | API key for prepaid USD credits and cumulative usage. |
 
 <!-- End generated provider additions -->
 
@@ -217,6 +221,8 @@ complete when the available scan window covers fewer days.
 - Admin API shows organization spend/messages summaries with the same inline dashboard pattern as OpenAI API.
 - App Auto: OAuth API (`oauth`) → CLI PTY (`claude`) → Web API (`web`).
 - CLI Auto: Web API (`web`) → CLI PTY (`claude`).
+- Linux CLI Auto: Web API (`web`) → OAuth API (`oauth`) → CLI PTY (`claude`). The OAuth step is skipped without
+  usable noninteractive credentials; OAuth request failures fall back to the CLI.
 - Local cost usage: scans `CLAUDE_CONFIG_DIR` when set, otherwise `~/.config/claude/projects`,
   `~/.claude/projects` (including current Claude Desktop Code/Cowork CLI sessions), and nested Claude Desktop
   local-agent JSONL files for the configured history window.
@@ -308,10 +314,11 @@ complete when the available scan window covers fewer days.
 
 ## OpenCode Go
 - Preferred usage source: `GET https://opencode.ai/zen/go/v1/usage` with an API key from Settings,
-  `providers[].apiKey`, or `OPENCODE_API_KEY`.
+  `providers[].apiKey`, `OPENCODE_API_KEY`, or an existing active OpenCode CLI login.
 - Web dashboard via browser or manual cookies (`opencode.ai`).
 - Unscoped Auto mode prefers local cost history from `~/.local/share/opencode/opencode.db` on macOS and Linux,
-  enriches it with API quota windows when configured, then falls back to standalone API and legacy web sources.
+  enriches it with quota windows from a configured key, browser session, then active CLI login. Without local history,
+  the configured key stays first; otherwise web precedes the CLI login.
 - Auto mode stays web-first for selected token accounts, manual cookies, and workspace overrides; explicit Web mode does
   not include local fallback.
 - Uses the public usage API for rolling 5-hour, weekly, and monthly usage windows, with the workspace Go page/server

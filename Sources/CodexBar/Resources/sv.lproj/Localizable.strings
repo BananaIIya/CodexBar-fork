@@ -168,7 +168,7 @@
 "Local token history is unavailable or incomplete." = "Lokal tokenhistorik saknas eller är ofullständig.";
 "Could not add Codex account" = "Kunde inte lägga till Codex-konto";
 "Could not open Terminal for Gemini" = "Kunde inte öppna Terminal för Gemini";
-"Could not start claude /login" = "Kunde inte starta claude /login";
+"Claude OAuth credentials read failed: CodexBar's Claude OAuth cache is temporarily unavailable in macOS Keychain. Check that the login keychain is unlocked in Keychain Access, then retry Refresh." = "Det gick inte att läsa Claude OAuth-inloggningsuppgifterna: CodexBars Claude OAuth-cache är tillfälligt otillgänglig i macOS-nyckelringen. Kontrollera i Nyckelhanterare att inloggningsnyckelringen är upplåst och försök sedan uppdatera igen.";
 "Could not start codex login" = "Kunde inte starta codex login";
 "Could not switch system account" = "Kunde inte byta systemkonto";
 "Credits" = "Krediter";
@@ -620,7 +620,6 @@
 
 /* Display Pane */
 "menu_bar_style_title" = "Menyradsstil";
-"menu_bar_style_subtitle" = "Hur menyradsobjektet visas.";
 "menu_bar_inactive_display_contrast_title" = "Förbättra synligheten på inaktiva skärmar";
 "menu_bar_inactive_display_contrast_subtitle" = "Använder kontrastrik rendering så att ikonen och mätvärdet förblir läsbara på andra skärmar.";
 "menu_bar_style_critters" = "Figurer";
@@ -674,6 +673,8 @@
 "overview_rows_follow_order" = "Översiktsrader följer alltid leverantörsordningen.";
 "overview_no_providers_selected" = "Inga leverantörer valda";
 "agent_sessions_title" = "Agentsessioner";
+"agent_sessions_remote_title" = "Fjärrsessioner (Tailscale / SSH)";
+"agent_sessions_remote_subtitle" = "Hitta och anslut till fjärrvärdar. Stäng av för att bara övervaka denna Mac.";
 "agent_sessions_subtitle" = "Visa lokala och via SSH upptäckta Codex- och Claude Code-sessioner i menyn.";
 "agent_sessions_hosts_title" = "Ytterligare SSH-värdar";
 "agent_sessions_footer" = "Mac-datorer på ditt tailnet upptäcks automatiskt. Lokala sessioner uppdateras var 30:e sekund, fjärrvärdar var 60:e sekund och när menyn öppnas.";
@@ -732,6 +733,8 @@
 "acknowledgements_authors" = "Upphovspersoner";
 "acknowledgements_license" = "Licens";
 "check_updates_auto" = "Sök efter uppdateringar automatiskt";
+"install_updates_auto" = "Hämta och installera uppdateringar automatiskt";
+"install_updates_auto_subtitle" = "När det är av tillfrågas du innan en ny version installeras.";
 "update_channel" = "Uppdateringskanal";
 "check_for_updates" = "Sök efter uppdateringar…";
 "updates_unavailable" = "Uppdateringar är inte tillgängliga i det här bygget.";
@@ -1089,6 +1092,7 @@
 "Kiro menu bar value" = "Kiro-värde i menyraden";
 "CodexBar could not read managed account storage. Recover the store before adding another account." = "CodexBar kunde inte läsa hanterad kontolagring. Återställ lagringen innan du lägger till ett konto till.";
 "Using CLI fallback" = "Använder CLI-reserv";
+"%@ is unavailable. Edit the widget to choose a provider." = "%@ är inte tillgänglig. Redigera widgeten för att välja en leverantör.";
 "%@ web API access is disabled." = "%@-åtkomst till webb-API är inaktiverad.";
 "tokens" = "token";
 "%@ / %@ (%@ remaining)" = "%@ / %@ (%@ kvar)";
@@ -1201,7 +1205,6 @@
 "Open T3 Chat Settings" = "Öppna T3 Chat-inställningar";
 "after next regen" = "efter nästa regenerering";
 "%.0f%% used" = "%.0f%% använt";
-"claude /login exited with status %d." = "claude /login avslutades med status %d.";
 "%d days of cost data" = "%d dagar med kostnadsdata";
 "Open legacy provider docs" = "Öppna äldre leverantörsdokumentation";
 "Secret access key" = "Hemlig åtkomstnyckel";
@@ -1407,6 +1410,7 @@
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Layout";
 "menu_bar_layout_footer" = "Dra brickor för att ordna menyraden. Klicka på en bricka för att lägga till den; markera en placerad bricka och tryck Delete för att ta bort den.";
+"menu_bar_layout_footer_requires_icon_and_percent" = "Layouten gäller endast för menyradsstilen ”%@”. Välj den stilen ovan för att redigera den.";
 "menu_bar_layout_group_identity" = "Identitet";
 "menu_bar_layout_group_usage" = "Användning";
 "menu_bar_layout_group_time" = "Tid";
@@ -1439,6 +1443,7 @@
 "menu_bar_layout_size_regular" = "Normal";
 "menu_bar_layout_size_large" = "Stor";
 "menu_bar_layout_monospaced_digits" = "Siffror med fast bredd";
+"menu_bar_layout_show_window_labels" = "Visa periodetiketter";
 "menu_bar_layout_gap" = "Mellanrum";
 "menu_bar_layout_gap_tight" = "Tätt";
 "menu_bar_layout_gap_regular" = "Normal";
@@ -1796,6 +1801,7 @@
 "Details for %@" = "Detaljer för %@";
 "EST. %@" = "Uppskattad %@";
 "Enable Antigravity provider" = "Aktivera Antigravity-leverantör";
+"Enable a provider in CodexBar → Settings → Providers." = "Aktivera en leverantör i CodexBar → Inställningar → Leverantörer.";
 "Enable account widgets in CodexBar → Settings → Menu → Widgets. Then edit this widget to choose an account." = "Aktivera kontowidgetar i CodexBar → Inställningar → Meny → Widgets. Redigera sedan denna widget för att välja ett konto.";
 "Error: %@" = "Fel: %@";
 "Examples: alt+cmd+2, shift+right. Refresh (cmd+r), Settings (cmd+,) and Quit (cmd+q) are reserved." = "Exempel: alt+cmd+2, shift+right. Uppdatera (cmd+r), Inställningar (cmd+,) och Avsluta (cmd+q) är reserverade.";
@@ -2010,10 +2016,7 @@
 "Top models:" = "Toppmodeller:";
 "Two quota burn-down charts in one tile." = "Två Kvot nedbränningsdiagram i en bricka.";
 "Usage & spend come from your console.groq.com browser session automatically. An API key is optional and only adds Enterprise Prometheus metrics." = "Användning och utgifter kommer automatiskt från din console.groq.com webbläsarsession. En API-nyckel är valfri och lägger endast till Enterprise Prometheus Mått.";
-"Usage data appears after a refresh." = "Användningsdata visas efter en uppdatering.";
-"Usage data will appear once the app refreshes." = "Användningsdata visas när appen uppdateras.";
 "Usage history chart with recent totals." = "Användningshistorikdiagram med senaste summor.";
-"Usage history will appear after a refresh." = "Användningshistorik kommer att visas efter en uppdatering.";
 "Usage limit" = "Användningsgräns";
 "Usage limits and reset countdowns for one saved account." = "Användningsgränser och återställ nedräkningar för ett sparat konto.";
 "Usage widget with a provider switcher." = "Användningswidget med en leverantörsväxlare.";
@@ -2111,6 +2114,8 @@
 "Poe usage history is unavailable." = "Användningshistoriken för Poe är inte tillgänglig.";
 "Stored in ~/.codexbar/config.json. Get your key from poe.com/api/keys." = "Lagrat i ~/.codexbar/config.json. Få din nyckel från poe.com/api/keys.";
 "Billing" = "Fakturering";
+"Invoice billing" = "Fakturabetalning";
+"Prepaid" = "Förbetalt";
 "Rate limit" = "Gräns för anropsfrekvens";
 "Billing and rate-limit data from the v0 Platform API" = "Faktureringsdata och gränser för anropsfrekvens från v0-plattformens API";
 "v0 cost history is not available via the Platform API." = "v0 kostnadshistorik är inte tillgänglig via plattformen API.";
@@ -2200,6 +2205,10 @@
 "Stored in ~/.codexbar/config.json. Create one at console.x.ai under Settings > Management Keys; inference API keys are not accepted." = "Lagrat i ~/.codexbar/config.json. Skapa en på console.x.ai under Inställningar > Hanteringsnycklar; inferens API-nycklar accepteras inte.";
 "xai-..." = "xai-...";
 "Team ID" = "Team ID";
+"Vercel access token" = "Vercel-åtkomsttoken";
+"Optional. Shows your personal budget instead of team credits. Saved in CodexBar's local config file. Or set VERCEL_ACCESS_TOKEN." = "Valfritt. Visar din personliga budget i stället för teamets krediter. Sparas i CodexBars lokala konfigurationsfil. Eller ange VERCEL_ACCESS_TOKEN.";
+"Open Vercel tokens" = "Öppna Vercel-tokens";
+"Required with a Vercel access token. Or set VERCEL_TEAM_ID." = "Krävs tillsammans med en Vercel-åtkomsttoken. Eller ange VERCEL_TEAM_ID.";
 "Required. Shown in the xAI Console URL and team settings." = "Krävs. Visas i xAI-konsolen URL och teaminställningar.";
 "Sakana AI cost summary is not supported." = "Sakana AI kostnadsöversikt stöds inte.";
 "Stored in ~/.codexbar/config.json. Copy the Sakana AI console Cookie request header." = "Lagrat i ~/.codexbar/config.json. Kopiera Sakana AI-konsolens Cookie-förfrågningshuvud.";
@@ -2353,6 +2362,7 @@
 "Core Monthly" = "Core Monthly";
 "Bobcoin usage" = "Bobcoin användning";
 "Code 7-day" = "Kod 7-dagars Kvot";
+"Other features" = "Övriga funktioner";
 "Quota services" = "Kvot tjänster";
 "Billing history" = "Faktureringshistorik";
 "Renews" = "Förnyar";
@@ -2458,7 +2468,7 @@
 "spend_performance_cache_help" = "Cachade indata dividerade med totala indata för de samtalsturer som kan räknas med. Viktat efter indatatoken, med mätningarnas täckning angiven.";
 "spend_performance_metric_help" = "Om dessa observationer";
 "merged_icon_source_title" = "Källa för kombinerad ikon";
-"merged_icon_source_subtitle" = "Välj vilken leverantör den hopfällda kombinerade ikonen visar.";
+"merged_icon_source_subtitle" = "”Högsta användning” jämför endast kvoter. Använd ”Aktuellt val” för leverantörer utan kvoter.";
 "merged_icon_source_current_selection" = "Aktuellt val";
 "merged_icon_source_highest_usage" = "Högsta användning";
 "merged_icon_source_frontmost_app" = "Leverantörsapp i förgrunden";
@@ -2557,12 +2567,11 @@
 "Clear filters" = "Rensa filter";
 "Change provider order" = "Ändra leverantörsordning";
 "Provider sorting" = "Sortera leverantörer";
-"Only enabled providers" = "Endast aktiverade leverantörer";
+"Only show enabled providers" = "Visa endast aktiverade leverantörer";
 "Restore default order" = "Återställ standardordning";
 "Also restores the provider order in the menu bar. Can be undone." = "Återställer även leverantörsordningen i menyraden. Kan ångras.";
 "Local Codex details; excluded from combined totals." = "Lokala Codex-detaljer; ingår inte i de sammanlagda totalerna.";
 
-"Auto uses an API key when configured, otherwise browser cookies." = "Auto uses an API key when configured, otherwise browser cookies.";
 "Stored in the CodexBar config file. You can also set COMMAND_CODE_API_KEY." = "Stored in the CodexBar config file. You can also set COMMAND_CODE_API_KEY.";
 /* OpenAI organization rate limits and live usage */
 "%@ tokens · %@ requests" = "%@ token · %@ förfrågningar";
@@ -2682,3 +2691,71 @@
 /* Munito provider credentials */
 "Key with Read account data (Admin API) permission. Or set MUNITO_API_KEY." = "Nyckel med behörighet att läsa kontodata (Admin API). Eller sätt MUNITO_API_KEY.";
 "Munito reports Admin API spend and limits, not local token cost history." = "Munito rapporterar Admin API:ts utgifter och gränser, inte den lokala token-kostnadshistoriken.";
+
+"Show all accounts in Overview" = "Visa alla konton i översikten";
+
+"Expand cached account usage. The six-provider limit still applies." = "Expandera valda leverantörer med cachad kontoanvändning. Gränsen på sex leverantörer gäller fortfarande.";
+"Edit" = "Redigera";
+"Move up" = "Flytta upp";
+"Move down" = "Flytta ned";
+"Leave blank to keep the saved credential." = "Lämna tomt för att behålla de sparade inloggningsuppgifterna.";
+
+"No personal budget configured" = "Ingen personlig budget har konfigurerats";
+
+"monthly_daily_target_format" = "≈ %@ / dag för att räcka till återställningen";
+
+"Trae CN" = "Trae CN";
+"Show Trae CN usage" = "Visa Trae CN-användning";
+"Sign in to Trae CN at trae.cn, then refresh CodexBar." = "Logga in på Trae CN på trae.cn och uppdatera sedan CodexBar.";
+"Trae CN usage response format changed." = "Formatet på användningssvaret från Trae CN har ändrats.";
+"Trae CN request failed. Try refreshing later." = "Trae CN-förfrågan misslyckades. Försök uppdatera senare.";
+"Use --provider copilot." = "Använd --provider copilot.";
+"Config changed during login. Please try again." = "Konfigurationen ändrades under inloggningen. Försök igen.";
+
+// Session usage browser
+"Search sessions" = "Sök sessioner";
+"No matching sessions" = "Inga matchande sessioner";
+"Select a session" = "Välj en session";
+"Cached input is included in input; reasoning is included in output." = "Cachelagrad indata ingår i indata; resonemangstoken ingår i utdata.";
+"Recent activity" = "Senaste aktivitet";
+"Sort by" = "Sortera efter";
+"Ascending" = "Stigande";
+"Descending" = "Fallande";
+"Each turn includes its recorded model calls within this period. Messages sharing a turn cannot be priced separately." = "Varje tur innehåller modellförfrågningar som registrerats under perioden. Meddelanden i samma tur kan inte prissättas separat.";
+"No turn-level usage records are available." = "Inga användningsdata per tur finns tillgängliga.";
+"Unattributed usage" = "Ej tilldelad användning";
+"Turn %d" = "Tur %d";
+"Model requests" = "Modellförfrågningar";
+"Tool activity has no separate recorded token or monetary cost." = "Inga separata token- eller penningkostnader registreras för verktygsanrop.";
+"Request %d" = "Förfrågan %d";
+
+"Request details exceed the limit." = "Förfrågningsdetaljerna överskrider gränsen.";
+
+"Request details are unavailable. Refresh usage and try again." = "Förfrågningsdetaljerna är inte tillgängliga. Uppdatera användningen och försök igen.";
+"Primary" = "Primärt";
+"Secondary" = "Sekundärt";
+"Tertiary" = "Tertiärt";
+
+/* Chatbox AI */
+"Chatbox AI" = "Chatbox AI";
+"Show Chatbox AI usage" = "Visa Chatbox AI-användning";
+"Chatbox AI license key is invalid. Update it in Settings." = "Licensnyckeln för Chatbox AI är ogiltig. Uppdatera den i Inställningar.";
+"Chatbox AI denied access. Check your license." = "Chatbox AI nekade åtkomst. Kontrollera din licens.";
+"Chatbox AI is rate limiting requests. Try again later." = "Chatbox AI begränsar antalet förfrågningar. Försök igen senare.";
+"Chatbox AI request failed. Try refreshing later." = "Chatbox AI-förfrågan misslyckades. Försök uppdatera senare.";
+"Chatbox AI returned an unrecognized response. Update CodexBar and try again." = "Chatbox AI returnerade ett okänt svar. Uppdatera CodexBar och försök igen.";
+
+/* abliteration.ai */
+"abliteration.ai" = "abliteration.ai";
+"Show abliteration.ai usage" = "Visa abliteration.ai-användning";
+"abliteration.ai is rate limiting requests. Try again later." = "abliteration.ai begränsar antalet förfrågningar. Försök igen senare.";
+"abliteration.ai request failed. Try refreshing later." = "abliteration.ai-förfrågan misslyckades. Försök uppdatera senare.";
+"abliteration.ai returned an unrecognized response. Update CodexBar and try again." = "abliteration.ai returnerade ett okänt svar. Uppdatera CodexBar och försök igen.";
+"Check your API key in Settings." = "Kontrollera din API-nyckel i Inställningar.";
+"Kimi Code" = "Kimi Code";
+
+"OpenCode local history" = "Lokal OpenCode-historik";
+
+"Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Visar OpenCode-användningen som registrerats på den här Mac-datorn i Codex-historiken. Avstängt som standard; CODEX_HOME-platser med begränsad omfattning eller alternativa platser förblir alltid undantagna.";
+"Auto uses the active saved session, otherwise an API key or browser cookies." = "Automatiskt använder den aktiva sparade sessionen, annars en API-nyckel eller webbläsarcookies.";
+"Store multiple Command Code subscription sessions." = "Spara flera prenumerationssessioner för Command Code.";
