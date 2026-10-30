@@ -122,6 +122,7 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
+        "5a57546c60494379", // Home-scoped main before archived-row retention; rows and checkpoints are unchanged.
         "e5909f60274b2c47", // Home scoping preserves the released rows and scan checkpoints.
         "4e1358d00a4a47b5", // Optional source ownership preserves existing native Codex rows and checkpoints.
         "54a95e8fe7bd6ee9", // Validating inspection checkpoints leaves persisted rows and scan progress unchanged.
