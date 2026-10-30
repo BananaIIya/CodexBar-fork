@@ -4,7 +4,8 @@
 
 ### Fixed
 
-- Codex: keep counting cost for sessions Codex archives as `.jsonl.zst`; they previously dropped out of every cost window once Codex removed the plain log.
+- Codex: retain cached cost history when previously scanned rollouts become `.jsonl.zst` archives, without duplicate counting (#4523, #4534, #4818). Thanks @BananaIIya, @kali113, @kcharlan, and @cassiarota!
+- Codex: preserve established local cost coverage and catch-up progress when switching Codex homes (#4770, #4773). Thanks @harjothkhara!
 
 ## 0.82.0 — 2026-10-26
 
@@ -39,6 +40,7 @@
 - Trae CN: distinguish the Usage meter from the Credits details in Visible usage items while preserving hidden choices (#4764, #4780). Thanks @LeoLin990405 and @liuyuplus!
 - WorkBuddy: keep resets on the paid subscription cycle instead of an earlier trial or reward expiry (#4767). Thanks @codertesla!
 - WorkBuddy: use the official mascot instead of the placeholder letter icon (#4768). Thanks @codertesla!
+
 
 ## 0.81.0 — 2026-10-24
 
