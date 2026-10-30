@@ -147,6 +147,31 @@ struct CostUsageArchivedRolloutTests {
     }
 
     @Test
+    func `storage budgets preserve archived rows outside a narrowed report window`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+        let day = try env.makeLocalNoon(year: 2026, month: 8, day: 30)
+        let olderDay = day.addingTimeInterval(-3 * 86400)
+        let older = try env.writeCodexSessionFile(
+            day: olderDay, filename: "older.jsonl", contents: Self.rollout(env, olderDay, tokens: 70))
+        let options = Self.options(env)
+        _ = CostUsageScanner.loadDailyReport(
+            provider: .codex, since: olderDay, until: day, now: day, options: options)
+        try Self.archive(older)
+        let store = CostUsageStore(cacheRoot: env.cacheRoot, home: env.codexStoreHome)
+        _ = await store.enforceBudgets(
+            maxRows: 0,
+            maxFileBytes: 0,
+            requestedSinceDay: "2026-08-30",
+            requestedUntilDay: "2026-08-30")
+        let wide = CostUsageScanner.loadDailyReport(
+            provider: .codex, since: olderDay, until: day, now: day, options: options)
+        #expect(wide.summary?.totalTokens == 70)
+        _ = await store.retainDayWindow(sinceDay: "2026-08-30", untilDay: "2026-08-30")
+        #expect(await store.readSnapshot().files.isEmpty)
+    }
+
+    @Test
     func `unseen archive only rollouts are ignored without decoding errors`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
